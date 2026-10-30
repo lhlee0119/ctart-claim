@@ -469,9 +469,9 @@ async function readWithAI(){
     if(cur!==mine) return;
     if(e && e.error==="cap" && me){ me.aiPaused=true; }
     box.className="ai err";
-    box.textContent = ({cap:"Auto-read is paused this month, please fill in. Sila isi sendiri.", rate_limited:"Auto-read is busy. Fill in yourself, or Re-crop to try again. Sila isi sendiri."})[e&&e.error]
+    box.textContent = ({cap:"Auto-read is paused this month, please fill in. Sila isi sendiri.", rate_limited:"Auto-read is busy. Fill in yourself, or Re-crop to try again. Sila isi sendiri.", busy:"Auto-read is busy right now. Fill in yourself, or Re-crop to try again. Sila isi sendiri."})[e&&e.error]
       || "Could not read the receipt, please fill in. Sila isi sendiri.";
-    if (e && e.error && !["cap","rate_limited"].includes(e.error)) box.textContent += " (" + e.error + (e.detail ? ": " + String(e.detail).slice(0,120) : "") + ")";
+    if (e && e.error && !["cap","rate_limited","busy"].includes(e.error)) box.textContent += " (" + e.error + (e.detail ? ": " + String(e.detail).slice(0,120) : "") + ")";
   }
 }
 
