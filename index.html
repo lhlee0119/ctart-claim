@@ -471,6 +471,7 @@ async function readWithAI(){
     box.className="ai err";
     box.textContent = ({cap:"Auto-read is paused this month, please fill in. Sila isi sendiri.", rate_limited:"Auto-read is busy. Fill in yourself, or Re-crop to try again. Sila isi sendiri."})[e&&e.error]
       || "Could not read the receipt, please fill in. Sila isi sendiri.";
+    if (e && e.error && !["cap","rate_limited"].includes(e.error)) box.textContent += " (" + e.error + (e.detail ? ": " + String(e.detail).slice(0,120) : "") + ")";
   }
 }
 
