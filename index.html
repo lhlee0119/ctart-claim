@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>CT ART Claim</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: one-screen phone tool inside Telegram. Sticky top bar, scrolling middle, fixed action bar. Thermal-paper whites, ballpoint-ink accent. */
+:root{
+  --bg:#eef0f3; --surface:#ffffff; --ink:#16191f; --muted:#5b6370; --line:#d7dbe2;
+  --accent:#1f4fb8; --accent-ink:#ffffff; --accent-soft:#e3eafb;
+  --warn:#9a5b00; --warn-soft:#fff2db; --bad:#b3261e; --good:#1d7a46; --good-soft:#e2f4e9;
+  --stage:#1c1f25;
+  --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#121418; --surface:#1b1e24; --ink:#eceef2; --muted:#9aa2ae; --line:#2e333c;
+  --accent:#7ea3ff; --accent-ink:#0d1220; --accent-soft:#1f2a45;
+  --warn:#f0b357; --warn-soft:#3a2a10; --bad:#ff8a80; --good:#7fd6a2; --good-soft:#163222;
+  --stage:#0b0c0f; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 var(--f-body);display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+img{max-width:100%}
+button,input,select{font:inherit;color:inherit}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+header{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);padding-block:12px;display:flex;align-items:center;gap:12px}
+header h1{font-size:18px;margin:0;font-weight:700}
+header .sub{font-size:13px;color:var(--muted)}
+header .back{border:0;background:none;padding:6px 8px 6px 0;font-size:22px;line-height:1;cursor:pointer}
+
+main{flex:1;overflow-y:auto;padding-block:16px 130px;display:flex;flex-direction:column;gap:16px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-top:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;z-index:6}
+.btn{flex:1;min-height:52px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:focus-visible,.chip:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.btn small{font-weight:400;opacity:.8;font-size:12px;display:block}
+.lab{display:flex;flex-direction:column;line-height:1.15;text-align:left}
+
+h2.sec{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:4px 0 -6px;font-weight:700}
+.intro{display:flex;flex-direction:column;gap:6px}
+.intro h2{margin:0;font-size:22px;text-wrap:balance}
+.intro p{margin:0;color:var(--muted)}
+.gate{margin:auto 0;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center;padding-block:40px}
+.gate h2{margin:0;font-size:20px}
+.gate p{margin:0;color:var(--muted);max-width:32ch}
+
+.list{display:flex;flex-direction:column;gap:10px}
+.item{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px}
+.item.noimg{grid-template-columns:1fr auto}
+.item img{width:56px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--line);background:#fff}
+.item .t{min-width:0}
+.item .n{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .m{font-size:13px;color:var(--muted)}
+.item .e{font-size:13px;color:var(--bad);margin-top:2px}
+.item .amt{font-weight:500;text-align:right;white-space:nowrap}
+.x{border:0;background:none;color:var(--muted);font-size:13px;cursor:pointer;padding:4px 0 0;text-decoration:underline}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 8px;background:var(--accent-soft);color:var(--accent);margin-top:4px}
+.pill.ok{background:var(--good-soft);color:var(--good)}
+.tot{display:flex;justify-content:space-between;font-weight:700;padding:4px 2px}
+.empty{border:1.5px dashed var(--line);border-radius:12px;padding:18px;color:var(--muted);text-align:center;font-size:14px}
+.banner{border-radius:10px;padding:10px 12px;font-size:14px;background:var(--warn-soft);color:var(--warn)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:700;font-size:14px;z-index:30;max-width:90vw;text-align:center}
+
+.stage{position:relative;width:fit-content;max-width:100%;margin:0 auto;touch-action:none;user-select:none;-webkit-user-select:none}
+.stage canvas{display:block;width:auto;height:auto;max-width:100%;max-height:calc(100vh - 290px);max-height:calc(var(--tg-viewport-stable-height,100dvh) - 290px);border-radius:10px;background:var(--stage)}
+.stage svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.h{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;touch-action:none;cursor:grab}
+.h::after{content:"";position:absolute;inset:12px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.hint{font-size:14px;color:var(--muted);margin:0}
+
+.scan{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.scan .imgwrap{max-height:52vh;overflow:auto;border-radius:8px;background:var(--stage);display:flex;justify-content:center}
+.scan img{display:block;max-width:100%;height:auto;align-self:flex-start}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 12px;font-size:14px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+
+.ai{display:flex;gap:10px;align-items:center;font-size:14px;border-radius:10px;padding:10px 12px;background:var(--accent-soft);color:var(--ink)}
+.ai.ok{background:var(--good-soft)}
+.ai.err{background:var(--warn-soft)}
+.spin{width:16px;height:16px;border-radius:50%;border:2.5px solid var(--accent);border-right-color:transparent;animation:sp .8s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}}
+
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.f.full{grid-column:1/-1}
+.f label{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.02em}
+.f label i{font-style:normal;font-weight:400}
+.f input,.f select{min-height:46px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:0 12px;width:100%}
+.f.need input{border-color:var(--bad)}
+.f .err{color:var(--bad);font-size:13px}
+.note{font-size:13px;border-radius:10px;padding:10px 12px;background:var(--warn-soft);color:var(--warn)}
+</style>
+</head>
+<body>
+
+<header class="gut">
+  <button class="back" id="backBtn" aria-label="Back" hidden>←</button>
+  <div><h1 id="hTitle">CT ART Claim</h1><div class="sub" id="hSub">Loading…</div></div>
+</header>
+
+<!-- GATE: loading / not in Telegram / waiting for approval -->
+<main class="gut" id="vGate">
+  <div class="gate" id="gateBox"><span class="spin"></span><p>Loading… · Memuatkan…</p></div>
+</main>
+
+<!-- HOME -->
+<main class="gut" id="vHome" hidden>
+  <div class="banner" id="aiBanner" hidden>Auto-read is paused this month. Please fill in the details yourself. Bacaan automatik dihentikan bulan ini, sila isi sendiri.</div>
+  <section class="intro">
+    <h2>Scan a receipt, we fill in the claim</h2>
+    <p>Imbas resit anda. Sistem akan baca dan isi tuntutan untuk anda.</p>
+  </section>
+  <button class="btn" id="galBtn" type="button" style="flex:none"><span class="lab">Choose from photos<small>Pilih dari galeri · boleh pilih banyak</small></span></button>
+  <h2 class="sec" id="batchHead" hidden>To send · Belum dihantar</h2>
+  <section class="list" id="list" aria-live="polite"></section>
+  <h2 class="sec" id="sentHead" hidden>Sent to office · Sudah dihantar</h2>
+  <section class="list" id="sentList"></section>
+</main>
+
+<!-- ADJUST -->
+<main class="gut" id="vAdjust" hidden>
+  <p class="hint">Drag the 4 blue dots to the receipt corners.<br>Tarik 4 titik biru ke bucu resit.</p>
+  <div class="stage" id="stage">
+    <canvas id="adjCanvas"></canvas>
+    <svg id="adjSvg" aria-hidden="true"><polygon id="adjPoly" fill="rgba(31,79,184,.18)" stroke="#5b8cff"></polygon></svg>
+  </div>
+</main>
+
+<!-- REVIEW -->
+<main class="gut" id="vReview" hidden>
+  <div class="scan">
+    <div class="imgwrap"><img id="revImg" alt="Scanned receipt"></div>
+    <div class="tools">
+      <button class="chip" id="rotBtn" type="button">↻ Rotate · Putar</button>
+      <button class="chip" id="modeBtn" type="button" aria-pressed="false">Original · Warna asal</button>
+      <button class="chip" id="recropBtn" type="button">✂ Re-crop · Potong semula</button>
+    </div>
+  </div>
+  <div class="ai" id="aiBox" hidden></div>
+  <form id="fm" class="fgrid" novalidate></form>
+  <div class="note" id="noteBox" hidden></div>
+</main>
+
+<div class="bar gut" id="barGate" hidden></div>
+<div class="bar gut" id="barHome" hidden>
+  <button class="btn primary" id="scanBtn"><span class="lab">Scan receipt<small>Imbas resit</small></span></button>
+  <button class="btn" id="sendBtn" disabled><span class="lab">Send<small id="sendSub">Hantar</small></span></button>
+</div>
+<div class="bar gut" id="barAdjust" hidden>
+  <button class="btn" id="retakeBtn"><span class="lab">Retake<small>Ambil semula</small></span></button>
+  <button class="btn primary" id="cropBtn"><span class="lab">Next<small>Seterusnya</small></span></button>
+</div>
+<div class="bar gut" id="barReview" hidden>
+  <button class="btn" id="discardBtn"><span class="lab">Discard<small>Buang</small></span></button>
+  <button class="btn primary" id="saveBtn"><span class="lab">Save<small>Simpan</small></span></button>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<input type="file" id="fileIn" accept="image/*" capture="environment" hidden>
+<input type="file" id="galIn" accept="image/*" multiple hidden>
+
+<script>
+/* ======== CONFIG: paste the Apps Script web app URL (ends with /exec) ======== */
+const API_URL = "https://script.google.com/macros/s/AKfycbxX4NLeQXRFJOZyM_c1bWNW2hbYmUMKlb5I6B9j_p227JNCma1rzrfqkDCwW3Vt8Gc/exec";
+/* ============================================================================ */
+
+const CATS = [
+  {id:"PETROL", bm:"Petrol · Minyak", car:true},
+  {id:"TOLL", bm:"Toll / TnG · Tol"},
+  {id:"MV MAINTENANCE", bm:"Car maintenance · Servis kenderaan"},
+  {id:"MESSING", bm:"Meals · Makan"},
+  {id:"PURCHASES", bm:"Purchases / hardware · Barang"},
+  {id:"ACCOMMODATION", bm:"Accommodation · Hotel"},
+  {id:"MEDICAL", bm:"Medical · Klinik (max RM100/month)"},
+  {id:"PRINTING & STATIONERY", bm:"Printing & stationery · Alat tulis"},
+  {id:"TELEPHONE", bm:"Telephone · Telefon"},
+  {id:"OTHERS", bm:"Others · Lain-lain"},
+];
+const catOf = id => CATS.find(c=>c.id===id) || CATS[CATS.length-1];
+const $ = id => document.getElementById(id);
+const store = {get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const money = n => (Number(n)||0).toFixed(2);
+const fmtDate = d => { if(!d) return ""; const [y,m,dd]=String(d).split("-"); return dd?`${dd}/${m}/${y}`:d; };
+const norm = s => String(s||"").replace(/\s+/g,"").toUpperCase();
+const NOBILL = "NO INVOICE NUMBER";
+function el(tag, props={}, ...kids){ const e=document.createElement(tag); for(const [k,v] of Object.entries(props)){ if(k==="class") e.className=v; else if(k==="text") e.textContent=v; else if(k.startsWith("on")) e[k]=v; else e.setAttribute(k,v);} e.append(...kids.filter(k=>k!=null)); return e; }
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,3000); }
+
+/* ---------- Telegram ---------- */
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg){ try{ tg.ready(); tg.expand(); }catch(e){} }
+function applyTheme(){ document.documentElement.setAttribute("data-theme", tg && tg.colorScheme==="dark" ? "dark" : "light"); }
+applyTheme(); if (tg && tg.onEvent) tg.onEvent("themeChanged", applyTheme);
+function haptic(kind){ try{ tg.HapticFeedback.notificationOccurred(kind); }catch(e){} }
+
+async function api(action, body={}){
+  const res = await fetch(API_URL, {method:"POST", body: JSON.stringify(Object.assign({action, initData: tg ? tg.initData : ""}, body))});
+  if (!res.ok) throw {error:"network"};
+  return res.json();
+}
+
+/* ---------- state ---------- */
+let me = null;            // {name, recent, bills, medical, aiPaused}
+let items = [];           // scanned, not sent yet
+let cur = null;           // receipt being scanned
+let queue = [];           // gallery picks still to process
+
+/* ---------- views ---------- */
+const VIEWS = ["Gate","Home","Adjust","Review"];
+function show(v){
+  for (const k of VIEWS){ $("v"+k).hidden = k!==v; $("bar"+k).hidden = k!==v || k==="Gate"; }
+  const inFlow = v==="Adjust"||v==="Review";
+  $("backBtn").hidden = !inFlow;
+  try{ inFlow ? tg.BackButton.show() : tg.BackButton.hide(); }catch(e){}
+  $("hTitle").textContent = {Gate:"CT ART Claim", Home:"CT ART Claim", Adjust:"Crop receipt", Review:"Check receipt"}[v];
+  $("hSub").textContent = v==="Home" ? (me ? me.name : "") : v==="Gate" ? "Receipts to claim · Resit untuk tuntutan"
+    : ({Adjust:"Potong resit", Review:"Semak butiran"}[v] + (queue.length ? ` (${queue.length} more · lagi ${queue.length})` : ""));
+  $("v"+v).scrollTop = 0;
+}
+function goBack(){ cur=null; queue=[]; show("Home"); }
+$("backBtn").onclick = goBack;
+try{ tg.BackButton.onClick(goBack); }catch(e){}
+function gate(title, text){ const g=$("gateBox"); g.textContent=""; g.append(el("h2",{text:title}), el("p",{text:text})); show("Gate"); }
+
+/* ---------- home ---------- */
+function renderHome(){
+  $("aiBanner").hidden = !(me && me.aiPaused);
+  const L=$("list"); L.textContent="";
+  $("batchHead").hidden = !items.length;
+  if (!items.length){
+    const e=el("div",{class:"empty"}); e.innerHTML='No receipts waiting. Tap <b>Scan receipt</b> below.<br>Belum ada resit.'; L.append(e);
+  } else {
+    items.forEach((it,i)=>{
+      const right = el("div",{style:"text-align:right"}, el("div",{class:"amt mono",text:"RM "+money(it.amt)}),
+        el("button",{class:"x",text:"Remove",onclick:()=>{ items.splice(i,1); renderHome(); }}));
+      const t = el("div",{class:"t"}, el("div",{class:"n",text:it.desc||"(no name)"}), el("div",{class:"m",text:[fmtDate(it.date),it.cat,it.plate,it.loc].filter(Boolean).join(" · ")}));
+      if (it.err) t.append(el("div",{class:"e",text:it.err}));
+      L.append(el("div",{class:"item"}, el("img",{src:it.thumb,alt:""}), t, right));
+    });
+    L.append(el("div",{class:"tot"}, el("span",{text:"Total · Jumlah"}), el("span",{class:"mono",text:"RM "+money(items.reduce((a,b)=>a+(+b.amt||0),0))})));
+  }
+  $("sendBtn").disabled = !items.length;
+  $("sendSub").textContent = items.length ? `Hantar ${items.length} resit` : "Hantar";
+  const S=$("sentList"); S.textContent="";
+  const recent = (me && me.recent) || [];
+  $("sentHead").hidden = !recent.length;
+  recent.forEach(r=>{
+    const pill = r.status==="CLAIMED" ? el("span",{class:"pill ok",text:r.claimNo||"Claimed"}) : el("span",{class:"pill",text:"Waiting · Menunggu"});
+    S.append(el("div",{class:"item noimg"},
+      el("div",{class:"t"}, el("div",{class:"n",text:r.desc||"(no name)"}), el("div",{class:"m",text:[fmtDate(r.date), r.cat, r.plate].filter(Boolean).join(" · ")}), pill),
+      el("div",{class:"amt mono",text:"RM "+money(r.amt)})));
+  });
+}
+
+/* ---------- image intake ---------- */
+$("scanBtn").onclick = () => { $("fileIn").value=""; $("fileIn").click(); };
+$("retakeBtn").onclick = () => { $("fileIn").value=""; $("fileIn").click(); };
+$("fileIn").onchange = e => { const f=e.target.files&&e.target.files[0]; if(f){ queue=[]; loadSource(f); } };
+$("galBtn").onclick = () => { $("galIn").value=""; $("galIn").click(); };
+$("galIn").onchange = e => { queue = Array.from(e.target.files||[]); nextInQueue(); };
+function nextInQueue(){ const f=queue.shift(); if(f){ loadSource(f); return true; } return false; }
+
+async function loadSource(src){
+  let bmp;
+  try { bmp = await createImageBitmap(src,{imageOrientation:"from-image"}); }
+  catch(e){ bmp = await new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=rej; im.src=URL.createObjectURL(src); }); }
+  const MAX=2400, k=Math.min(1, MAX/Math.max(bmp.width,bmp.height));
+  const c=document.createElement("canvas"); c.width=Math.round(bmp.width*k); c.height=Math.round(bmp.height*k);
+  c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
+  cur = { src:c, corners:detectCorners(c), rot:0, mode:"scan", ai:null };
+  openAdjust();
+}
+
+/* ---------- receipt detection ---------- */
+function detectCorners(c){
+  const S=360, k=Math.min(1,S/Math.max(c.width,c.height));
+  const w=Math.max(1,Math.round(c.width*k)), h=Math.max(1,Math.round(c.height*k));
+  const t=document.createElement("canvas"); t.width=w; t.height=h;
+  const x=t.getContext("2d",{willReadFrequently:true}); x.drawImage(c,0,0,w,h);
+  const d=x.getImageData(0,0,w,h).data, n=w*h, g=new Uint8Array(n), hist=new Array(256).fill(0);
+  for(let i=0;i<n;i++){ const v=(d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114)|0; g[i]=v; hist[v]++; }
+  let sum=0; for(let i=0;i<256;i++) sum+=i*hist[i];
+  let sB=0,wB=0,best=0,th=128;
+  for(let i=0;i<256;i++){ wB+=hist[i]; if(!wB) continue; const wF=n-wB; if(!wF) break; sB+=i*hist[i];
+    const mB=sB/wB, mF=(sum-sB)/wF, v=wB*wF*(mB-mF)*(mB-mF); if(v>best){best=v;th=i;} }
+  const m=new Uint8Array(n); for(let i=0;i<n;i++) m[i]=g[i]>th?1:0;
+  const mask=morph(morph(m,w,h,2,true),w,h,2,false);
+  const lab=new Int32Array(n), q=new Int32Array(n); let bestId=0,bestSize=0,id=0;
+  for(let s=0;s<n;s++){ if(!mask[s]||lab[s]) continue; id++; let qh=0,qt=0; q[qt++]=s; lab[s]=id; let size=0;
+    while(qh<qt){ const p=q[qh++]; size++; const px=p%w, py=(p/w)|0;
+      if(px>0&&mask[p-1]&&!lab[p-1]){lab[p-1]=id;q[qt++]=p-1;}
+      if(px<w-1&&mask[p+1]&&!lab[p+1]){lab[p+1]=id;q[qt++]=p+1;}
+      if(py>0&&mask[p-w]&&!lab[p-w]){lab[p-w]=id;q[qt++]=p-w;}
+      if(py<h-1&&mask[p+w]&&!lab[p+w]){lab[p+w]=id;q[qt++]=p+w;} }
+    if(size>bestSize){bestSize=size;bestId=id;} }
+  const frac=bestSize/n;
+  const whole=()=>[[0,0],[c.width,0],[c.width,c.height],[0,c.height]];
+  if(!bestId||frac<0.06||frac>0.97) return whole();
+  let tl=[0,0,Infinity],tr=[0,0,-Infinity],br=[0,0,-Infinity],bl=[0,0,Infinity];
+  for(let p=0;p<n;p++){ if(lab[p]!==bestId) continue; const px=p%w, py=(p/w)|0, s=px+py, df=px-py;
+    if(s<tl[2]) tl=[px,py,s]; if(s>br[2]) br=[px,py,s]; if(df>tr[2]) tr=[px,py,df]; if(df<bl[2]) bl=[px,py,df]; }
+  return [tl,tr,br,bl].map(([px,py])=>[(px+0.5)/k,(py+0.5)/k]);
+}
+function morph(m,w,h,r,isDil){
+  const a=new Uint8Array(m.length), b=new Uint8Array(m.length);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){ let v=isDil?0:1;
+    for(let k=-r;k<=r;k++){ const xx=x+k; const s=(xx<0||xx>=w)?(isDil?0:1):m[y*w+xx]; v=isDil?(v|s):(v&s); } a[y*w+x]=v; }
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){ let v=isDil?0:1;
+    for(let k=-r;k<=r;k++){ const yy=y+k; const s=(yy<0||yy>=h)?(isDil?0:1):a[yy*w+x]; v=isDil?(v|s):(v&s); } b[y*w+x]=v; }
+  return b;
+}
+
+/* ---------- adjust ---------- */
+const handles=[];
+function openAdjust(){
+  show("Adjust");
+  const cv=$("adjCanvas"), c=cur.src, k=Math.min(1,1200/Math.max(c.width,c.height));
+  cv.width=Math.round(c.width*k); cv.height=Math.round(c.height*k); cv.getContext("2d").drawImage(c,0,0,cv.width,cv.height);
+  $("adjSvg").setAttribute("viewBox",`0 0 ${c.width} ${c.height}`); $("adjSvg").setAttribute("preserveAspectRatio","none");
+  $("adjPoly").setAttribute("stroke-width", Math.max(c.width,c.height)/220);
+  if(!handles.length){
+    for(let i=0;i<4;i++){
+      const h=el("div",{class:"h",role:"slider",tabindex:"0","aria-label":["Top left corner","Top right corner","Bottom right corner","Bottom left corner"][i]});
+      h.addEventListener("pointerdown",ev=>{ev.preventDefault();h.setPointerCapture(ev.pointerId);h.dataset.drag="1";});
+      h.addEventListener("pointermove",ev=>{ if(h.dataset.drag) moveHandle(i,ev.clientX,ev.clientY); });
+      const end=()=>{delete h.dataset.drag;}; h.addEventListener("pointerup",end); h.addEventListener("pointercancel",end);
+      $("stage").append(h); handles.push(h);
+    }
+  }
+  requestAnimationFrame(drawHandles);
+}
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function moveHandle(i,cx,cy){ const r=$("adjCanvas").getBoundingClientRect(), c=cur.src;
+  cur.corners[i]=[clamp((cx-r.left)/r.width*c.width,0,c.width), clamp((cy-r.top)/r.height*c.height,0,c.height)]; drawHandles(); }
+function drawHandles(){ if(!cur) return; const r=$("adjCanvas").getBoundingClientRect(), c=cur.src;
+  cur.corners.forEach(([x,y],i)=>{ handles[i].style.left=(x/c.width*r.width)+"px"; handles[i].style.top=(y/c.height*r.height)+"px"; });
+  $("adjPoly").setAttribute("points", cur.corners.map(p=>p.join(",")).join(" ")); }
+addEventListener("resize",()=>{ if(!$("vAdjust").hidden) drawHandles(); });
+
+/* ---------- warp + scan look ---------- */
+function homography(src,dst){ const A=[],B=[];
+  for(let i=0;i<4;i++){ const [x,y]=dst[i],[X,Y]=src[i]; A.push([x,y,1,0,0,0,-X*x,-X*y]); B.push(X); A.push([0,0,0,x,y,1,-Y*x,-Y*y]); B.push(Y); }
+  for(let i=0;i<8;i++){ let p=i; for(let r=i+1;r<8;r++) if(Math.abs(A[r][i])>Math.abs(A[p][i])) p=r;
+    [A[i],A[p]]=[A[p],A[i]]; [B[i],B[p]]=[B[p],B[i]];
+    for(let r=0;r<8;r++){ if(r===i) continue; const f=A[r][i]/A[i][i]; for(let c=i;c<8;c++) A[r][c]-=f*A[i][c]; B[r]-=f*B[i]; } }
+  return B.map((b,i)=>b/A[i][i]); }
+function warp(c,q){
+  const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+  let W=Math.max(dist(q[0],q[1]),dist(q[3],q[2])), H=Math.max(dist(q[0],q[3]),dist(q[1],q[2]));
+  const k=Math.min(1,2200/Math.max(W,H)); W=Math.max(8,Math.round(W*k)); H=Math.max(8,Math.round(H*k));
+  const hm=homography(q,[[0,0],[W,0],[W,H],[0,H]]);
+  const sd=c.getContext("2d").getImageData(0,0,c.width,c.height).data, sw=c.width, sh=c.height;
+  const out=document.createElement("canvas"); out.width=W; out.height=H;
+  const od=out.getContext("2d").createImageData(W,H), o=od.data;
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const den=hm[6]*x+hm[7]*y+1, sx=(hm[0]*x+hm[1]*y+hm[2])/den, sy=(hm[3]*x+hm[4]*y+hm[5])/den;
+    const x0=Math.floor(sx), y0=Math.floor(sy), fx=sx-x0, fy=sy-y0, oi=(y*W+x)*4;
+    if(x0<0||y0<0||x0>=sw-1||y0>=sh-1){ o[oi]=o[oi+1]=o[oi+2]=255; o[oi+3]=255; continue; }
+    const i00=(y0*sw+x0)*4, i10=i00+4, i01=i00+sw*4, i11=i01+4;
+    for(let ch=0;ch<3;ch++) o[oi+ch]=(sd[i00+ch]*(1-fx)+sd[i10+ch]*fx)*(1-fy)+(sd[i01+ch]*(1-fx)+sd[i11+ch]*fx)*fy;
+    o[oi+3]=255; }
+  out.getContext("2d").putImageData(od,0,0); return out;
+}
+function enhance(c){
+  const W=c.width,H=c.height,p=c.getContext("2d").getImageData(0,0,W,H).data,n=W*H;
+  const g=new Float32Array(n); for(let i=0;i<n;i++) g[i]=p[i*4]*0.299+p[i*4+1]*0.587+p[i*4+2]*0.114;
+  const r=Math.max(8,Math.round(Math.max(W,H)/24)), I=new Float64Array((W+1)*(H+1));
+  for(let y=1;y<=H;y++){ let row=0; for(let x=1;x<=W;x++){ row+=g[(y-1)*W+x-1]; I[y*(W+1)+x]=I[(y-1)*(W+1)+x]+row; } }
+  const out=document.createElement("canvas"); out.width=W; out.height=H;
+  const od=out.getContext("2d").createImageData(W,H), o=od.data;
+  for(let y=0;y<H;y++){ const y0=Math.max(0,y-r), y1=Math.min(H,y+r+1);
+    for(let x=0;x<W;x++){ const x0=Math.max(0,x-r), x1=Math.min(W,x+r+1);
+      const s=I[y1*(W+1)+x1]-I[y0*(W+1)+x1]-I[y1*(W+1)+x0]+I[y0*(W+1)+x0];
+      const bg=Math.max(40, s/((x1-x0)*(y1-y0))*1.04);
+      let v=g[y*W+x]/bg; v=(v-0.52)/(0.93-0.52); v=v<0?0:v>1?1:v; v=Math.pow(v,1.5);
+      const oi=(y*W+x)*4; o[oi]=o[oi+1]=o[oi+2]=v*255; o[oi+3]=255; } }
+  out.getContext("2d").putImageData(od,0,0); return out;
+}
+function rotate(c,quarter){ if(!quarter) return c; const o=document.createElement("canvas"), sw=quarter%2===1;
+  o.width=sw?c.height:c.width; o.height=sw?c.width:c.height; const x=o.getContext("2d");
+  x.translate(o.width/2,o.height/2); x.rotate(quarter*Math.PI/2); x.drawImage(c,-c.width/2,-c.height/2); return o; }
+function scaled(c,max){ const k=Math.min(1,max/Math.max(c.width,c.height)); if(k===1) return c;
+  const o=document.createElement("canvas"); o.width=Math.round(c.width*k); o.height=Math.round(c.height*k); o.getContext("2d").drawImage(c,0,0,o.width,o.height); return o; }
+const b64 = (c,q) => c.toDataURL("image/jpeg",q).split(",")[1];
+
+$("cropBtn").onclick = async () => { $("cropBtn").disabled=true; await new Promise(r=>setTimeout(r,20));
+  try{ cur.color=warp(cur.src,cur.corners); cur.scan=enhance(cur.color); cur.rot=0; cur.mode="scan"; openReview(true); } finally { $("cropBtn").disabled=false; } };
+const outCanvas = () => rotate(cur.mode==="scan"?cur.scan:cur.color, cur.rot);
+const refreshImg = () => { $("revImg").src = outCanvas().toDataURL("image/jpeg",0.85); };
+$("rotBtn").onclick = () => { cur.rot=(cur.rot+1)%4; refreshImg(); };
+$("modeBtn").onclick = () => { cur.mode=cur.mode==="scan"?"color":"scan"; $("modeBtn").setAttribute("aria-pressed",cur.mode==="color"); refreshImg(); };
+$("recropBtn").onclick = () => openAdjust();
+
+/* ---------- form ---------- */
+(function buildFields(){
+  const C=$("fm");
+  const f=(cls,id,label,input,extra)=>{ const w=el("div",{class:"f "+cls,id:"w"+id}, el("label",{for:"f"+id},...label), input); if(extra) w.append(extra); C.append(w); return input; };
+  const sel=el("select",{id:"fCat"}); CATS.forEach(c=>sel.append(el("option",{value:c.id,text:c.bm})));
+  f("full","Cat",["Type · Jenis"],sel);
+  f("","Date",["Date · Tarikh"],el("input",{id:"fDate",type:"date"}));
+  f("","Amt",["Total (RM) · Jumlah"],el("input",{id:"fAmt",class:"mono",inputmode:"decimal",placeholder:"0.00"}));
+  f("full","Desc",["Description · Kedai"],el("input",{id:"fDesc",autocomplete:"off",placeholder:"e.g. PETRON BUKIT LANJAN"}));
+  f("full","Bill",["Bill no. · No. bil ", el("i",{text:"(leave empty if none)"})],el("input",{id:"fBill",class:"mono",autocomplete:"off"}));
+  f("full","Loc",["Location · Lokasi ", el("i",{text:"(if on receipt)"})],el("input",{id:"fLoc",autocomplete:"off",placeholder:"e.g. Bukit Tambun, Pulau Pinang"}));
+  f("full","Plate",["Car plate · No. plat"],el("input",{id:"fPlate",class:"mono",autocomplete:"off",autocapitalize:"characters",placeholder:"e.g. VCW 9954"}),
+    el("span",{class:"err",id:"ePlate",hidden:"",text:"Plate needed · No. plat diperlukan"}));
+  sel.addEventListener("change",()=>{ $("wPlate").hidden=!catOf(sel.value).car; checkNotes(); });
+  ["fBill","fAmt","fDate"].forEach(id=>$(id).addEventListener("input",checkNotes));
+})();
+function writeFields(r){ $("fCat").value=r.cat||"PURCHASES"; $("fDate").value=r.date||""; $("fAmt").value=r.amt!=null&&r.amt!==""?money(r.amt):"";
+  $("fDesc").value=r.desc||""; $("fBill").value=(r.bill&&r.bill!==NOBILL)?r.bill:""; $("fLoc").value=r.loc||""; $("fPlate").value=r.plate||"";
+  $("wPlate").hidden=!catOf($("fCat").value).car; }
+function readFields(){ const c=catOf($("fCat").value); return {
+  cat:c.id, date:$("fDate").value, desc:$("fDesc").value.trim().toUpperCase(),
+  bill:$("fBill").value.trim()||NOBILL, amt:Math.round((parseFloat($("fAmt").value)||0)*100)/100,
+  loc:$("fLoc").value.trim(), plate:c.car?$("fPlate").value.trim().toUpperCase():"" }; }
+function checkNotes(){
+  const msgs=[]; const bill=norm($("fBill").value);
+  if(bill && (items.some(it=>norm(it.bill)===bill) || ((me&&me.bills)||[]).includes(bill)))
+    msgs.push("This bill number was already sent. No. bil ini sudah dihantar.");
+  if($("fCat").value==="MEDICAL"){
+    const ym=($("fDate").value||"").slice(0,7);
+    const used=[...items, ...((me&&me.medical)||[]).map(m=>({cat:"MEDICAL",date:m.date,amt:m.amt}))]
+      .filter(it=>it.cat==="MEDICAL"&&(it.date||"").slice(0,7)===ym).reduce((a,b)=>a+(+b.amt||0),0);
+    const tot=used+(parseFloat($("fAmt").value)||0);
+    if(tot>100) msgs.push(`Medical this month: RM${money(tot)}. Cap is RM100, the extra RM${money(tot-100)} will not be paid. Had RM100 sebulan.`);
+  }
+  $("noteBox").hidden=!msgs.length; $("noteBox").textContent=msgs.join(" ");
+}
+function openReview(fresh){
+  show("Review"); refreshImg();
+  if(fresh){ writeFields({cat:"PURCHASES",plate:store.get("ctclaim.plate")||""}); $("ePlate").hidden=true; $("wPlate").classList.remove("need"); checkNotes(); readWithAI(); }
+}
+
+async function readWithAI(){
+  const box=$("aiBox"); box.hidden=false; box.className="ai";
+  if (me && me.aiPaused){ box.className="ai err"; box.textContent="Auto-read is paused this month, please fill in. Sila isi sendiri."; return; }
+  box.innerHTML='<span class="spin"></span><span>Reading the receipt… Sedang membaca resit…</span>';
+  const mine=cur;
+  try{
+    const res=await api("read",{image:b64(scaled(rotate(cur.scan,cur.rot),1600),0.85)});
+    if(cur!==mine) return;
+    if(!res.ok) throw res;
+    const j=res.fields||{}; cur.ai=res.ai||null;
+    const r={cat:$("fCat").value, plate:$("fPlate").value};
+    if(/^\d{4}-\d{2}-\d{2}$/.test(j.date||"")) r.date=j.date;
+    if(j.merchant) r.desc=String(j.merchant).toUpperCase();
+    if(j.bill_no) r.bill=String(j.bill_no);
+    if(j.amount!=null&&!isNaN(+j.amount)) r.amt=+j.amount;
+    if(CATS.some(c=>c.id===j.category)) r.cat=j.category;
+    if(j.fuel===true) r.cat="PETROL";
+    if(j.location) r.loc=String(j.location);
+    if(j.plate) r.plate=String(j.plate).toUpperCase();
+    writeFields(r); checkNotes();
+    box.className="ai ok"; box.textContent="✓ Done. Please check before saving. Sila semak sebelum simpan.";
+  }catch(e){
+    if(cur!==mine) return;
+    if(e && e.error==="cap" && me){ me.aiPaused=true; }
+    box.className="ai err";
+    box.textContent = ({cap:"Auto-read is paused this month, please fill in. Sila isi sendiri.", rate_limited:"Auto-read is busy. Fill in yourself, or Re-crop to try again. Sila isi sendiri."})[e&&e.error]
+      || "Could not read the receipt, please fill in. Sila isi sendiri.";
+  }
+}
+
+$("discardBtn").onclick = () => { cur=null; if(!nextInQueue()) show("Home"); };
+$("saveBtn").onclick = () => {
+  const c=catOf($("fCat").value);
+  const needPlate=c.car && !$("fPlate").value.trim();
+  $("ePlate").hidden=!needPlate; $("wPlate").classList.toggle("need",needPlate);
+  if(needPlate){ $("fPlate").focus(); return; }
+  if(!(parseFloat($("fAmt").value)>0)){ $("fAmt").focus(); return; }
+  const r=readFields(); if(r.plate) store.set("ctclaim.plate",r.plate);
+  const full=outCanvas();
+  r.thumb=scaled(full,160).toDataURL("image/jpeg",0.7);
+  r.image=b64(full,0.82); r.ai=cur.ai;
+  items.push(r); haptic("success"); cur=null; renderHome(); if(!nextInQueue()) show("Home");
+};
+
+/* ---------- send ---------- */
+$("sendBtn").onclick = async () => {
+  const btn=$("sendBtn"); btn.disabled=true; $("scanBtn").disabled=true;
+  const total=items.length; let done=0, amount=0; const left=[];
+  for (const it of items.slice()){
+    $("sendSub").textContent=`Sending ${done+left.length+1}/${total}…`;
+    try{
+      const res=await api("submit",{item:{cat:it.cat,date:it.date,desc:it.desc,bill:it.bill,amt:it.amt,loc:it.loc,plate:it.plate}, image:it.image, ai:it.ai});
+      if(res.ok){ done++; amount+=it.amt; }
+      else { it.err = res.error==="duplicate" ? "Already sent before"+(res.detail?" ("+res.detail+")":"")+". Sudah dihantar." : "Not sent, try again. Belum dihantar."; left.push(it); }
+    }catch(e){ it.err="No connection, try again. Tiada sambungan."; left.push(it); }
+  }
+  items=left;
+  if(done){ try{ await api("done",{count:done,total:amount}); }catch(e){} haptic("success"); }
+  toast(left.length ? `Sent ${done} of ${total}. Check the ones still in the list.` : `Sent ${done} · ${done} resit dihantar ✓`);
+  try{ const m=await api("me"); if(m.ok&&m.status==="ACTIVE") me=m; }catch(e){}
+  $("scanBtn").disabled=false; renderHome();
+};
+
+/* ---------- boot ---------- */
+(async()=>{
+  if(!tg || !tg.initData){ gate("Open this from Telegram","Open the CT ART Claim bot in Telegram and tap the Claim button. Buka bot CT ART Claim di Telegram."); return; }
+  if(API_URL.indexOf("http")!==0){ gate("Not set up yet","The office still needs to add the server address to this app."); return; }
+  try{
+    const m=await api("me");
+    if(!m.ok){ gate("Could not sign in", m.error==="auth" ? "Close this and open it again from the bot. Tutup dan buka semula dari bot." : "Please try again later. Sila cuba lagi."); return; }
+    if(m.status!=="ACTIVE"){ gate("Waiting for the office","The office will activate your account soon. Pejabat akan aktifkan akaun anda."); return; }
+    me=m; renderHome(); show("Home");
+  }catch(e){ gate("No connection","Check your internet and open again. Semak internet dan buka semula."); }
+})();
+</script>
+</body>
+</html>
