@@ -279,9 +279,222 @@ async function loadSource(src){
   const MAX=2400, k=Math.min(1, MAX/Math.max(bmp.width,bmp.height));
   const c=document.createElement("canvas"); c.width=Math.round(bmp.width*k); c.height=Math.round(bmp.height*k);
   c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
-  cur = { src:c, corners:detectCorners(c), rot:0, mode:"scan", ai:null };
+  // smart edge finder (OpenCV); if it is still downloading, wait up to 3 s, then use the simple one
+  const ok = await Promise.race([loadCV(), new Promise(r=>setTimeout(()=>r(false),3000))]);
+  const whole=[[0,0],[c.width,0],[c.width,c.height],[0,c.height]];
+  cur = { src:c, corners: ok ? (smartCorners(c)||whole) : detectCorners(c), rot:0, mode:"scan", ai:null };
   openAdjust();
 }
+
+/* ---------- OpenCV loader: ~3.5 MB once, then cached by the phone ---------- */
+const CV_URL = "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.12.0-release.1/dist/opencv.js";
+let cvP = null;
+function loadCV(){
+  if (cvP) return cvP;
+  cvP = new Promise(res => {
+    const s = document.createElement("script"); s.async = true; s.src = CV_URL;
+    s.onload = async () => {
+      try {
+        if (window.cv instanceof Promise) window.cv = await window.cv;
+        else if (!(window.cv && window.cv.Mat)) await new Promise(r => { window.cv.onRuntimeInitialized = r; });
+      } catch (e) { console.warn("opencv", e); }
+      res(!!(window.cv && window.cv.Mat));
+    };
+    s.onerror = () => { cvP = null; res(false); };       // try again next photo
+    document.head.appendChild(s);
+  });
+  return cvP;
+}
+setTimeout(loadCV, 500);   // start downloading in the background as soon as the app opens
+
+/* ---------- smart receipt finder (OpenCV.js) ----------
+   Looks for the receipt's four paper edges using two cues: brightness and colour
+   (thermal paper is slightly yellow, A4 / desks are not). Candidates come from
+   (a) bright/colour regions and (b) long straight edges; each is scored by how well
+   all four sides sit on a real, consistent edge. Returns 4 corners [tl,tr,br,bl]
+   in the canvas's pixel coordinates, or null. */
+function smartCorners(c){
+  if(!(window.cv && cv.Mat)) return null;
+  const S=400, k=S/Math.max(c.width,c.height);
+  const W=Math.max(8,Math.round(c.width*k)), H=Math.max(8,Math.round(c.height*k)), N=W*H;
+  const t=document.createElement("canvas"); t.width=W; t.height=H;
+  const tx=t.getContext("2d",{willReadFrequently:true}); tx.drawImage(c,0,0,W,H);
+  const d=tx.getImageData(0,0,W,H).data;
+  const gray=new Float32Array(N), chroma=new Float32Array(N);
+  for(let i=0;i<N;i++){ const r=d[i*4],g=d[i*4+1],b=d[i*4+2]; gray[i]=0.299*r+0.587*g+0.114*b; chroma[i]=(b-r)*4; }
+  const trash=[]; const keep=m=>(trash.push(m),m);
+  try{
+    const k7=keep(cv.Mat.ones(7,7,cv.CV_8U)), k5=keep(cv.Mat.ones(5,5,cv.CV_8U));
+    const chans=[], G=[];
+    for(const arr of [gray,chroma]){
+      const m=keep(cv.matFromArray(H,W,cv.CV_32F,arr));
+      cv.morphologyEx(m,m,cv.MORPH_CLOSE,k7);                 // wipes out printed text
+      cv.GaussianBlur(m,m,new cv.Size(5,5),0);
+      const gx=keep(new cv.Mat()), gy=keep(new cv.Mat());
+      cv.Sobel(m,gx,cv.CV_32F,1,0,3); cv.Sobel(m,gy,cv.CV_32F,0,1,3);
+      const X=gx.data32F, Y=gy.data32F, mag=new Float32Array(N);
+      for(let i=0;i<N;i++) mag[i]=Math.hypot(X[i],Y[i]);
+      const s=pct(mag,98)+1e-6;
+      chans.push(Float32Array.from(m.data32F)); G.push([X,Y,mag,s]);
+    }
+    // per pixel keep whichever cue (brightness / colour) has the stronger normalised edge
+    const gx=new Float32Array(N), gy=new Float32Array(N), u8=new Uint8Array(N);
+    for(let i=0;i<N;i++){
+      const a=G[0][2][i]/G[0][3], b=G[1][2][i]/G[1][3], j=b>a?1:0;
+      gx[i]=G[j][0][i]/G[j][3]; gy[i]=G[j][1][i]/G[j][3];
+      u8[i]=Math.min(255,Math.hypot(gx[i],gy[i])*120);
+    }
+    const E={W,H,gx,gy};
+
+    /* (a) region candidates */
+    const cands=[];
+    for(let ci=0;ci<2;ci++){
+      const ch=chans[ci], sorted=Float32Array.from(ch).sort();
+      for(let p=30;p<=95;p+=5){
+        const th=sorted[Math.min(N-1,Math.floor(N*p/100))];
+        for(const pol of (ci===1?[0,1]:[0])){
+          const mk=new Uint8Array(N); for(let i=0;i<N;i++) mk[i]=(pol?ch[i]<=th:ch[i]>th)?1:0;
+          const mm=keep(cv.matFromArray(H,W,cv.CV_8U,mk)); cv.morphologyEx(mm,mm,cv.MORPH_OPEN,k5);
+          const lab=keep(new cv.Mat()), st=keep(new cv.Mat()), cen=keep(new cv.Mat());
+          const n=cv.connectedComponentsWithStats(mm,lab,st,cen,4,cv.CV_32S);
+          for(let l=1;l<n;l++){
+            const area=st.intAt(l,cv.CC_STAT_AREA);
+            if(area<0.03*N||area>0.95*N) continue;
+            const one=keep(new cv.Mat()); cv.compare(lab,keep(new cv.Mat(H,W,cv.CV_32S,new cv.Scalar(l))),one,cv.CMP_EQ);
+            const cs=keep(new cv.MatVector()), hi=keep(new cv.Mat());
+            cv.findContours(one,cs,hi,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
+            if(!cs.size()) continue;
+            const hull=keep(new cv.Mat()); cv.convexHull(cs.get(0),hull,false,true); trash.push(cs.get(0));
+            const per=cv.arcLength(hull,true); let q=null;
+            for(let e=0.01;e<=0.0801&&!q;e+=0.01){ const ap=keep(new cv.Mat()); cv.approxPolyDP(hull,ap,e*per,true);
+              if(ap.rows===4){ const a=ap.data32S; q=[[a[0],a[1]],[a[2],a[3]],[a[4],a[5]],[a[6],a[7]]]; } }
+            if(!q || area/Math.max(polyArea(q),1)<0.85) continue;
+            cands.push({P:refine(order(q),E),src:"seg"});
+          }
+        }
+      }
+    }
+
+    /* (b) straight-edge candidates */
+    const em=keep(cv.matFromArray(H,W,cv.CV_8U,u8)), ed=keep(new cv.Mat()), L=keep(new cv.Mat());
+    cv.Canny(em,ed,25,60); cv.HoughLinesP(ed,L,1,Math.PI/180,25,Math.round(0.10*S),12);
+    const segs=[]; for(let i=0;i<L.rows;i++){ const a=L.data32S.slice(i*4,i*4+4); segs.push(a); }
+    segs.sort((p,q)=>Math.hypot(q[2]-q[0],q[3]-q[1])-Math.hypot(p[2]-p[0],p[3]-p[1]));
+    const lines=[];
+    for(const [x1,y1,x2,y2] of segs){
+      const dl=Math.hypot(x2-x1,y2-y1); let nx=-(y2-y1)/dl, ny=(x2-x1)/dl, cc=nx*x1+ny*y1;
+      if(cc<0){nx=-nx;ny=-ny;cc=-cc;}
+      const th=Math.atan2(ny,nx);
+      if(lines.some(l=>Math.abs(Math.sin(th-l.th))<0.05&&Math.abs(cc-l.c)<6)) continue;
+      lines.push({th,c:cc,nx,ny}); if(lines.length>=30) break;
+    }
+    const pairs=[];
+    for(let i=0;i<lines.length;i++) for(let j=i+1;j<lines.length;j++){
+      const a=lines[i],b=lines[j]; if(Math.abs(Math.sin(a.th-b.th))<0.35&&Math.abs(a.c-b.c)>0.08*S) pairs.push([a,b]); }
+    for(let i=0;i<pairs.length;i++) for(let j=i+1;j<pairs.length;j++){
+      const [a,b]=pairs[i],[c2,d2]=pairs[j];
+      if(Math.abs(Math.cos(a.th-c2.th))>0.5) continue;
+      const P=[cross(a,c2),cross(c2,b),cross(b,d2),cross(d2,a)];
+      if(P.some(p=>!p||p[0]<-0.03*W||p[0]>1.03*W||p[1]<-0.03*H||p[1]>1.03*H)) continue;
+      const ar=polyArea(P)/N; if(ar<0.03||ar>0.95||!convex(P)) continue;
+      cands.push({P:order(P),src:"line"});
+    }
+
+    let best=null;
+    for(const cd of cands){
+      if(!squareish(cd.P)) continue;                       // paper is a rectangle seen at an angle, never a kite
+      const s=support(cd.P,E), o=s.slice().sort((x,y)=>x-y);
+      // one side may be partly hidden by a hand: accept it if the other three sides are clearly paper edges
+      const hidden=o[0]<0.3;
+      if(hidden && !(o[0]>=0.12 && o[1]>=0.6)) continue;
+      const mn=hidden?o[1]:o[0];
+      const ar=polyArea(cd.P)/N, sc=(mn*0.6+(s[0]+s[1]+s[2]+s[3])/4*0.4)*(0.4+0.6*Math.min(ar/0.25,1))*(hidden?0.85:1);
+      if(!best||sc>best.sc) best={sc,P:cd.P};
+    }
+    if(!best||best.sc<0.5) return null;               // not sure: let the worker drag the corners
+    const P=order(extend(best.P,chans[0],E));
+    return P.map(([x,y])=>[Math.max(0,Math.min(c.width,x/k)),Math.max(0,Math.min(c.height,y/k))]);
+  } catch(e){ console.warn("smartCorners",e); return null; }
+  finally{ trash.forEach(m=>{ try{m.delete();}catch(_){} }); }
+}
+function pct(a,p){ const step=Math.max(1,Math.floor(a.length/4000)), s=[]; for(let i=0;i<a.length;i+=step) s.push(a[i]); s.sort((x,y)=>x-y); return s[Math.min(s.length-1,Math.floor(s.length*p/100))]; }
+function polyArea(P){ let s=0; for(let i=0;i<P.length;i++){ const a=P[i],b=P[(i+1)%P.length]; s+=a[0]*b[1]-b[0]*a[1]; } return Math.abs(s)/2; }
+function convex(P){ let sg=0; for(let i=0;i<4;i++){ const a=P[i],b=P[(i+1)%4],c=P[(i+2)%4]; const z=(b[0]-a[0])*(c[1]-b[1])-(b[1]-a[1])*(c[0]-b[0]); if(!z) return false; if(!sg) sg=Math.sign(z); else if(Math.sign(z)!==sg) return false; } return true; }
+function cross(a,b){ const det=a.nx*b.ny-a.ny*b.nx; if(Math.abs(det)<1e-3) return null; return [(a.c*b.ny-b.c*a.ny)/det,(a.nx*b.c-b.nx*a.c)/det]; }
+function order(P){ const cx=P.reduce((s,p)=>s+p[0],0)/4, cy=P.reduce((s,p)=>s+p[1],0)/4;
+  const Q=P.slice().sort((p,q)=>Math.atan2(p[1]-cy,p[0]-cx)-Math.atan2(q[1]-cy,q[0]-cx));
+  let i=0; for(let j=1;j<4;j++) if(Q[j][0]+Q[j][1]<Q[i][0]+Q[i][1]) i=j; return Q.slice(i).concat(Q.slice(0,i)); }
+function edgeAt(E,x,y,nx,ny){ const xx=Math.round(x),yy=Math.round(y); if(xx<0||yy<0||xx>=E.W||yy>=E.H) return 0;
+  const i=yy*E.W+xx, a=E.gx[i], b=E.gy[i], m=Math.hypot(a,b); if(m<=0.25) return 0; const pr=a*nx+b*ny; return Math.abs(pr)/m>0.85?Math.sign(pr):0; }
+function support(P,E){
+  const out=[];
+  for(let i=0;i<4;i++){
+    const p=P[i],q=P[(i+1)%4],dx=q[0]-p[0],dy=q[1]-p[1],ln=Math.hypot(dx,dy); if(ln<5) return [0,0,0,0];
+    const nx=-dy/ln, ny=dx/ln, M=32, hp=[], hn=[];
+    for(let s=0;s<M;s++){ const t=0.02+0.96*s/(M-1), x=p[0]+dx*t, y=p[1]+dy*t; let bp=0,bn=0;
+      for(let o=-2;o<=2;o++){ const v=edgeAt(E,x+nx*o,y+ny*o,nx,ny); if(v>0) bp=1; else if(v<0) bn=1; }
+      hp.push(bp); hn.push(bn); }
+    const h=hp.reduce((a,b)=>a+b,0)>=hn.reduce((a,b)=>a+b,0)?hp:hn, mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+    out.push(0.6*mean(h)+0.4*Math.min(mean(h.slice(0,5)),mean(h.slice(-5))));
+  }
+  return out;
+}
+function segSupport(p,q,E){
+  const dx=q[0]-p[0],dy=q[1]-p[1],ln=Math.hypot(dx,dy); if(ln<5) return 0;
+  const nx=-dy/ln, ny=dx/ln; let pos=0,neg=0;
+  for(let s=0;s<20;s++){ const t=0.1+0.8*s/19, xx=Math.round(p[0]+dx*t), yy=Math.round(p[1]+dy*t);
+    if(xx<0||yy<0||xx>=E.W||yy>=E.H) continue; const i=yy*E.W+xx, a=E.gx[i], b=E.gy[i], m=Math.hypot(a,b), pr=a*nx+b*ny;
+    if(m>0.2&&Math.abs(pr)/m>0.8){ if(pr>0) pos+=Math.min(m,2); else neg+=Math.min(m,2); } }
+  return Math.max(pos,neg)/20;
+}
+function lineOf(a,b){ const nx=-(b[1]-a[1]), ny=b[0]-a[0]; return {nx,ny,c:nx*a[0]+ny*a[1]}; }
+function meet(L1,L2){ const det=L1.nx*L2.ny-L1.ny*L2.nx; if(Math.abs(det)<1e-6) return null; return [(L1.c*L2.ny-L2.c*L1.ny)/det,(L1.nx*L2.c-L2.nx*L1.c)/det]; }
+function refine(P,E){
+  // nudge each side (±8 px, ±3°) onto the strongest nearby edge
+  P=P.map(p=>p.slice());
+  for(let it=0;it<2;it++) for(let i=0;i<4;i++){
+    const p=P[i],q=P[(i+1)%4],cx=(p[0]+q[0])/2,cy=(p[1]+q[1])/2,dx=q[0]-p[0],dy=q[1]-p[1],ln=Math.hypot(dx,dy),nx=-dy/ln,ny=dx/ln;
+    let best=[segSupport(p,q,E),p,q];
+    for(let dg=-3;dg<=3;dg++){ const an=dg*Math.PI/180, ca=Math.cos(an), sa=Math.sin(an);
+      const rot=v=>[cx+ca*(v[0]-cx)-sa*(v[1]-cy), cy+sa*(v[0]-cx)+ca*(v[1]-cy)];
+      const rp=rot(p), rq=rot(q);
+      for(let o=-8;o<=8;o++){ const pp=[rp[0]+nx*o,rp[1]+ny*o], qq=[rq[0]+nx*o,rq[1]+ny*o], s=segSupport(pp,qq,E); if(s>best[0]+1e-9) best=[s,pp,qq]; } }
+    const Lc=lineOf(best[1],best[2]), a=meet(lineOf(P[(i+3)%4],P[i]),Lc), b=meet(Lc,lineOf(P[(i+1)%4],P[(i+2)%4]));
+    if(a&&b){ P[i]=a; P[(i+1)%4]=b; }
+  }
+  return P;
+}
+function extend(P,gray,E){
+  // a printed box inside the receipt can look like a paper edge: if the paper carries on past a side, move the side out
+  P=P.map(p=>p.slice());
+  const vals=[]; const mn=Math.max(0,Math.floor(Math.min(...P.map(p=>p[1])))), mx=Math.min(E.H-1,Math.ceil(Math.max(...P.map(p=>p[1]))));
+  for(let y=mn;y<=mx;y+=2) for(let x=0;x<E.W;x+=2) if(inside(P,x,y)) vals.push(gray[y*E.W+x]);
+  if(!vals.length) return P; vals.sort((a,b)=>a-b); const paper=vals[vals.length>>1];
+  const cx=P.reduce((s,p)=>s+p[0],0)/4, cy=P.reduce((s,p)=>s+p[1],0)/4;
+  for(let i=0;i<4;i++){
+    const p=P[i],q=P[(i+1)%4],dx=q[0]-p[0],dy=q[1]-p[1],ln=Math.hypot(dx,dy); let nx=-dy/ln, ny=dx/ln;
+    if(nx*((p[0]+q[0])/2-cx)+ny*((p[1]+q[1])/2-cy)<0){nx=-nx;ny=-ny;}
+    const size=Math.hypot(P[(i+2)%4][0]-p[0],P[(i+2)%4][1]-p[1]);
+    const cur=segSupport(p,q,E); let bo=0,bs=cur,dark=0,ref=paper;
+    for(let off=3;off<0.6*size;off+=2){
+      const v=[]; for(let s=0;s<12;s++){ const t=0.15+0.7*s/11, x=Math.floor(p[0]+dx*t+nx*(off-2)), y=Math.floor(p[1]+dy*t+ny*(off-2));
+        if(x>=0&&y>=0&&x<E.W&&y<E.H) v.push(gray[y*E.W+x]); }
+      if(v.length<8) break; v.sort((a,b)=>a-b);
+      const lv=v[Math.floor(v.length*0.9)];
+      if(lv<ref-20){ dark+=2; if(dark>14) break; continue; }   // step over a printed dark band / QR row
+      dark=0; ref=Math.min(ref,Math.max(lv,ref-3));            // follow a soft shadow slowly, not a hard edge
+      const s=segSupport([p[0]+nx*off,p[1]+ny*off],[q[0]+nx*off,q[1]+ny*off],E);
+      if(s>=Math.max(0.5*cur,0.3)&&s>bs*0.8){ bo=off; bs=s; }
+    }
+    if(bo){ P[i]=[p[0]+nx*bo,p[1]+ny*bo]; P[(i+1)%4]=[q[0]+nx*bo,q[1]+ny*bo]; }
+  }
+  return P;
+}
+function squareish(P){ for(let i=0;i<4;i++){ const a=P[(i+3)%4],b=P[i],c=P[(i+1)%4];
+  const u=[a[0]-b[0],a[1]-b[1]], v=[c[0]-b[0],c[1]-b[1]], cs=(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v)||1);
+  if(Math.abs(cs)>0.5) return false; } return true; }      // every corner between 60° and 120°
+function inside(P,x,y){ let s=0; for(let i=0;i<4;i++){ const a=P[i],b=P[(i+1)%4], z=(b[0]-a[0])*(y-a[1])-(b[1]-a[1])*(x-a[0]); if(!z) continue; if(!s) s=Math.sign(z); else if(Math.sign(z)!==s) return false; } return true; }
+
 
 /* ---------- receipt detection ---------- */
 function detectCorners(c){
