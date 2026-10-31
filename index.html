@@ -200,7 +200,9 @@ function toast(msg){ const t=$("toast"); t.textContent=msg; t.hidden=false; clea
 
 /* ---------- Telegram ---------- */
 const tg = window.Telegram && window.Telegram.WebApp;
-if (tg){ try{ tg.ready(); tg.expand(); }catch(e){} }
+if (tg){ try{ tg.ready(); tg.expand(); }catch(e){}
+  // stop Telegram's "swipe down to close" so dragging a crop corner downward cannot shut the app
+  try{ if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); }catch(e){} }
 function applyTheme(){ document.documentElement.setAttribute("data-theme", tg && tg.colorScheme==="dark" ? "dark" : "light"); }
 applyTheme(); if (tg && tg.onEvent) tg.onEvent("themeChanged", applyTheme);
 function haptic(kind){ try{ tg.HapticFeedback.notificationOccurred(kind); }catch(e){} }
@@ -224,6 +226,8 @@ function show(v){
   const inFlow = v==="Adjust"||v==="Review";
   $("backBtn").hidden = !inFlow;
   try{ inFlow ? tg.BackButton.show() : tg.BackButton.hide(); }catch(e){}
+  // ask "close anyway?" while a receipt is being cropped/checked or scanned receipts are not sent yet
+  try{ (inFlow || items.length) ? tg.enableClosingConfirmation() : tg.disableClosingConfirmation(); }catch(e){}
   $("hTitle").textContent = {Gate:"CT ART Claim", Home:"CT ART Claim", Adjust:"Crop receipt", Review:"Check receipt"}[v];
   $("hSub").textContent = v==="Home" ? (me ? me.name : "") : v==="Gate" ? "Receipts to claim · Resit untuk tuntutan"
     : ({Adjust:"Potong resit", Review:"Semak butiran"}[v] + (queue.length ? ` (${queue.length} more · lagi ${queue.length})` : ""));
@@ -236,6 +240,7 @@ function gate(title, text){ const g=$("gateBox"); g.textContent=""; g.append(el(
 
 /* ---------- home ---------- */
 function renderHome(){
+  try{ if(!$("vHome").hidden) items.length ? tg.enableClosingConfirmation() : tg.disableClosingConfirmation(); }catch(e){}
   $("aiBanner").hidden = !(me && me.aiPaused);
   const L=$("list"); L.textContent="";
   $("batchHead").hidden = !items.length;
