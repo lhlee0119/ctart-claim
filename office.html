@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>CT ART Claim · Office</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Office side of CT ART Claim: same look as the worker app. Three tabs: Workers, Receipts, Claims. */
+:root{
+  --bg:#eef0f3; --surface:#ffffff; --ink:#16191f; --muted:#5b6370; --line:#d7dbe2;
+  --accent:#1f4fb8; --accent-ink:#ffffff; --accent-soft:#e3eafb;
+  --warn:#9a5b00; --warn-soft:#fff2db; --bad:#b3261e; --bad-soft:#fde7e5; --good:#1d7a46; --good-soft:#e2f4e9;
+  --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#121418; --surface:#1b1e24; --ink:#eceef2; --muted:#9aa2ae; --line:#2e333c;
+  --accent:#7ea3ff; --accent-ink:#0d1220; --accent-soft:#1f2a45;
+  --warn:#f0b357; --warn-soft:#3a2a10; --bad:#ff8a80; --bad-soft:#3a1715; --good:#7fd6a2; --good-soft:#163222; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 var(--f-body);display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+header{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);padding-top:12px}
+header .row{display:flex;align-items:center;gap:12px}
+header h1{font-size:18px;margin:0;font-weight:700}
+header .sub{font-size:13px;color:var(--muted)}
+.tabs{display:flex;gap:4px;margin-top:10px}
+.tab{flex:1;border:0;background:none;padding:10px 4px 12px;font-weight:700;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer}
+.tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+.tab .cnt{display:inline-block;min-width:20px;padding:0 6px;border-radius:999px;background:var(--bad);color:#fff;font-size:12px;margin-left:4px}
+
+main{flex:1;overflow-y:auto;padding-block:16px 120px;display:flex;flex-direction:column;gap:14px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding-top:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;z-index:6;align-items:center}
+.btn{flex:1;min-height:50px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.sm{min-height:38px;flex:none;font-size:14px;border-radius:10px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+h2.sec{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:6px 0 -4px;font-weight:700;display:flex;justify-content:space-between}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.list{display:flex;flex-direction:column;gap:8px}
+.it{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;cursor:pointer;text-align:left;width:100%}
+.it .t{flex:1;min-width:0}
+.it .n{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.it .m{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.it .amt{font-family:var(--f-mono);white-space:nowrap}
+.it input[type=checkbox]{width:22px;height:22px;flex:none;accent-color:var(--accent)}
+.it.off{opacity:.55}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 8px;background:var(--accent-soft);color:var(--accent)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.ok{background:var(--good-soft);color:var(--good)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.empty{border:1.5px dashed var(--line);border-radius:12px;padding:18px;color:var(--muted);text-align:center;font-size:14px}
+.gate{margin:auto 0;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center;padding-block:40px}
+.gate h2{margin:0;font-size:20px}
+.gate p{margin:0;color:var(--muted);max-width:34ch}
+.usage{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.tot{display:flex;flex-direction:column;line-height:1.2;flex:1}
+.tot b{font-family:var(--f-mono);font-size:18px}
+.tot span{font-size:13px;color:var(--muted)}
+.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.lnk{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer;color:var(--ink)}
+.lnk.bad{color:var(--bad);border-color:var(--bad)}
+.sel{min-height:46px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:0 12px;width:100%}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-weight:700;font-size:14px;z-index:40;max-width:90vw;text-align:center}
+.spin{width:16px;height:16px;border-radius:50%;border:2.5px solid var(--accent);border-right-color:transparent;animation:sp .8s linear infinite;display:inline-block;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* edit sheet (slides over the page) */
+.sheet{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column}
+.sheet header{padding-bottom:12px}
+.sheet .back{border:0;background:none;padding:6px 8px 6px 0;font-size:22px;line-height:1;cursor:pointer}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.f.full{grid-column:1/-1}
+.f label{font-size:13px;font-weight:700;color:var(--muted)}
+.f input,.f select{min-height:46px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:0 12px;width:100%}
+.f .hint{font-size:12px;color:var(--muted)}
+.err{color:var(--bad);font-size:14px}
+.imgbox{background:#1c1f25;border-radius:10px;min-height:120px;display:flex;align-items:center;justify-content:center;max-height:55vh;overflow:auto}
+.imgbox img{max-width:100%;display:block;align-self:flex-start}
+.info{font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header class="gut" id="topHead">
+  <div class="row"><div><h1>CT ART Claim · Office</h1><div class="sub" id="hSub">Loading…</div></div></div>
+  <div class="tabs" role="tablist" id="tabs" hidden>
+    <button class="tab" role="tab" data-tab="workers" aria-selected="false">Workers<span class="cnt" id="cntW" hidden></span></button>
+    <button class="tab" role="tab" data-tab="receipts" aria-selected="true">Receipts</button>
+    <button class="tab" role="tab" data-tab="claims" aria-selected="false">Claims</button>
+  </div>
+</header>
+
+<main class="gut" id="vGate"><div class="gate" id="gateBox"><span class="spin"></span><p>Loading…</p></div></main>
+
+<main class="gut" id="vWorkers" hidden></main>
+
+<main class="gut" id="vReceipts" hidden>
+  <div class="usage" id="usageLine"></div>
+  <select class="sel" id="workerSel" aria-label="Worker"></select>
+  <div id="recList" class="list"></div>
+</main>
+
+<main class="gut" id="vClaims" hidden></main>
+
+<div class="bar gut" id="barReceipts" hidden>
+  <div class="tot"><b id="selSum">RM 0.00</b><span id="selCnt">0 selected</span></div>
+  <button class="btn primary" id="makeBtn" disabled style="flex:1.4">Make claim form</button>
+</div>
+
+<!-- worker editor -->
+<div class="sheet" id="wSheet" hidden>
+  <header class="gut"><div class="row"><button class="back" id="wBack" aria-label="Back">←</button><div><h1 id="wTitle">Worker</h1><div class="sub" id="wSub"></div></div></div></header>
+  <main class="gut">
+    <div class="fgrid">
+      <div class="f full"><label for="wName">Full name (as on the claim form)</label><input id="wName" autocomplete="off" autocapitalize="characters" placeholder="e.g. AHMAD BIN ALI"></div>
+      <div class="f"><label for="wCode">Code</label><input id="wCode" autocomplete="off" autocapitalize="characters" maxlength="5" placeholder="e.g. AB"><span class="hint">Goes into the claim no. Must be unique.</span></div>
+      <div class="f"><label for="wStatus">Status</label><select id="wStatus"><option value="ACTIVE">ACTIVE · can send</option><option value="PENDING">PENDING · waiting</option><option value="INACTIVE">INACTIVE · stopped</option></select></div>
+    </div>
+    <div class="err" id="wErr" hidden></div>
+    <p class="info">Changing the name also updates their receipts that are not claimed yet. Claimed receipts keep the old name.</p>
+  </main>
+  <div class="bar gut"><button class="btn" id="wCancel">Cancel</button><button class="btn primary" id="wSave">Save</button></div>
+</div>
+
+<!-- receipt editor -->
+<div class="sheet" id="rSheet" hidden>
+  <header class="gut"><div class="row"><button class="back" id="rBack" aria-label="Back">←</button><div><h1>Receipt</h1><div class="sub" id="rSub"></div></div></div></header>
+  <main class="gut">
+    <div class="imgbox" id="rImg"><span class="spin"></span></div>
+    <div class="fgrid" id="rForm"></div>
+    <div class="err" id="rErr" hidden></div>
+    <button class="lnk" id="rTg" type="button" style="align-self:flex-start">Open in Telegram group</button>
+  </main>
+  <div class="bar gut"><button class="btn" id="rCancel">Cancel</button><button class="btn primary" id="rSave">Save changes</button></div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbxX4NLeQXRFJOZyM_c1bWNW2hbYmUMKlb5I6B9j_p227JNCma1rzrfqkDCwW3Vt8Gc/exec";
+const CAT_NAMES = {"PETROL":"Petrol","TOLL":"Toll / TnG","MV MAINTENANCE":"Car maintenance","MESSING":"Meals","PURCHASES":"Purchases","ACCOMMODATION":"Accommodation","MEDICAL":"Medical","PRINTING & STATIONERY":"Printing & stationery","TELEPHONE":"Telephone","OTHERS":"Others"};
+const NOBILL = "NO INVOICE NUMBER";
+const $ = id => document.getElementById(id);
+const money = n => (Number(n)||0).toFixed(2);
+const fmtDate = d => { if(!d) return ""; const [y,m,dd]=String(d).split("-"); return dd?`${dd}/${m}/${y}`:d; };
+function el(tag, props={}, ...kids){ const e=document.createElement(tag); for(const [k,v] of Object.entries(props)){ if(k==="class") e.className=v; else if(k==="text") e.textContent=v; else if(k.startsWith("on")) e[k]=v; else if(v!==false&&v!=null) e.setAttribute(k,v===true?"":v);} e.append(...kids.filter(k=>k!=null&&k!==false)); return e; }
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,3200); }
+
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg){ try{ tg.ready(); tg.expand(); if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); }catch(e){} }
+document.documentElement.setAttribute("data-theme", tg && tg.colorScheme==="dark" ? "dark" : "light");
+const startParam = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || "";
+function haptic(k){ try{ tg.HapticFeedback.notificationOccurred(k); }catch(e){} }
+function confirmBox(msg){ return new Promise(res=>{ try{ if(tg && tg.showConfirm){ tg.showConfirm(msg, ok=>res(!!ok)); return; } }catch(e){} res(window.confirm(msg)); }); }
+function openLink(u){ if(!u) return; try{ if(/^https:\/\/t\.me\//.test(u) && tg.openTelegramLink){ tg.openTelegramLink(u); return; } tg.openLink(u); }catch(e){ window.open(u,"_blank"); } }
+
+async function api(action, body={}){
+  const res = await fetch(API_URL, {method:"POST", body: JSON.stringify(Object.assign({action, initData: tg ? tg.initData : ""}, body))});
+  if (!res.ok) throw {error:"network"};
+  const j = await res.json();
+  if (!j.ok) throw j;
+  return j;
+}
+const errText = e => (e && (e.detail || e.error)) || "Something went wrong";
+
+/* ---------- state ---------- */
+let D = null, tab = "receipts", curWorker = "", off = new Set(), editing = null;
+
+function gate(title, text){ for (const v of ["vWorkers","vReceipts","vClaims"]) $(v).hidden=true; $("barReceipts").hidden=true; $("tabs").hidden=true;
+  $("vGate").hidden=false; $("gateBox").replaceChildren(el("h2",{text:title}), el("p",{text})); }
+
+async function load(keepTab){
+  try{ D = await api("office_data"); }
+  catch(e){
+    if (e && e.error==="not_office") return gate("Office only", "This page is for members of the CT ART office group. Ask the office to add you to the group.");
+    if (e && e.error==="auth") return gate("Open from Telegram", "Please open this from the Office button in the CT ART office group.");
+    return gate("Could not load", errText(e));
+  }
+  $("hSub").textContent = D.me;
+  $("vGate").hidden = true; $("tabs").hidden = false;
+  const pend = D.workers.filter(w=>w.status==="PENDING").length;
+  $("cntW").hidden = !pend; $("cntW").textContent = pend;
+  renderWorkers(); renderReceipts(); renderClaims();
+  show(keepTab || tab);
+}
+function show(t){
+  tab = t;
+  document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-selected", b.dataset.tab===t));
+  $("vWorkers").hidden = t!=="workers"; $("vReceipts").hidden = t!=="receipts"; $("vClaims").hidden = t!=="claims";
+  $("barReceipts").hidden = t!=="receipts";
+}
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>show(b.dataset.tab));
+
+/* ---------- workers ---------- */
+function renderWorkers(){
+  const V = $("vWorkers"); V.replaceChildren();
+  const groups = [["PENDING","Waiting for approval"],["ACTIVE","Active"],["INACTIVE","Stopped"]];
+  for (const [st, label] of groups){
+    const ws = D.workers.filter(w=>(w.status||"PENDING")===st);
+    if (!ws.length && st!=="ACTIVE") continue;
+    V.append(el("h2",{class:"sec"}, el("span",{text:label}), el("span",{text:String(ws.length)})));
+    const L = el("div",{class:"list"});
+    if (!ws.length) L.append(el("div",{class:"empty",text:"Nobody yet."}));
+    ws.forEach(w=>L.append(el("button",{class:"it",type:"button",onclick:()=>openWorker(w)},
+      el("div",{class:"t"}, el("div",{class:"n",text:w.name || w.tname || "(no name)"}),
+        el("div",{class:"m",text:[w.code && "Code "+w.code, w.name ? w.tname : null, w.username, w.joined && "joined "+fmtDate(w.joined.slice(0,10))].filter(Boolean).join(" · ")})),
+      el("span",{class:"pill "+(st==="PENDING"?"warn":st==="ACTIVE"?"ok":"bad"),text:st==="PENDING"?"Approve":st}))));
+    V.append(L);
+  }
+}
+function openWorker(w, approving){
+  editing = w;
+  $("wTitle").textContent = w.name || w.tname || "Worker";
+  $("wSub").textContent = [w.tname, w.username, "ID "+w.id].filter(Boolean).join(" · ");
+  $("wName").value = w.name || (w.tname||"").toUpperCase();
+  $("wCode").value = w.code || "";
+  $("wStatus").value = approving || w.status==="PENDING" ? "ACTIVE" : (w.status || "ACTIVE");
+  $("wErr").hidden = true; $("wSave").disabled = false; $("wSave").textContent = w.status==="PENDING" ? "Approve" : "Save";
+  $("wSheet").hidden = false; setTimeout(()=>$(w.name ? "wCode" : "wName").focus(), 50);
+}
+function closeWorker(){ $("wSheet").hidden = true; editing = null; }
+$("wBack").onclick = $("wCancel").onclick = closeWorker;
+$("wCode").oninput = () => { $("wCode").value = $("wCode").value.toUpperCase().replace(/[^A-Z0-9]/g,""); };
+$("wSave").onclick = async () => {
+  const name=$("wName").value.trim(), code=$("wCode").value.trim(), status=$("wStatus").value;
+  const bad = m => { $("wErr").textContent=m; $("wErr").hidden=false; };
+  if (!name) return bad("Please type the full name.");
+  if (!code) return bad("Please type a code (1–5 letters or numbers).");
+  const clash = D.workers.find(x=>x.id!==editing.id && String(x.code||"").toUpperCase()===code.toUpperCase());
+  if (clash) return bad("Code "+code+" is already used by "+(clash.name||clash.tname)+".");
+  $("wSave").disabled = true; $("wSave").replaceChildren(el("span",{class:"spin"}), " Saving…");
+  try{ await api("office_worker", {id: editing.id, name, code, status}); haptic("success");
+    toast(status==="ACTIVE" && editing.status!=="ACTIVE" ? "Approved · they got a message" : "Saved");
+    closeWorker(); await load("workers"); }
+  catch(e){ bad(errText(e)); $("wSave").disabled=false; $("wSave").textContent="Save"; }
+};
+
+/* ---------- receipts ---------- */
+function renderReceipts(){
+  const u = D.usage, capPct = u.cap>0 ? Math.round(u.usd/u.cap*1000)/10 : 0;
+  $("usageLine").replaceChildren(el("span",{text:`AI this month: ${u.calls} reads · RM ${u.rm.toFixed(2)}`}), el("span",{text: u.cap>0 ? capPct+"% of cap" : ""}));
+  const names = Array.from(new Set(D.workers.filter(w=>w.status==="ACTIVE"&&w.name).map(w=>w.name).concat(Object.keys(D.pending))));
+  names.sort((a,b)=>(D.pending[b]||[]).length-(D.pending[a]||[]).length || a.localeCompare(b));
+  if (!names.includes(curWorker)) { curWorker = names[0] || ""; off = new Set(); }
+  $("workerSel").replaceChildren(...names.map(n=>el("option",{value:n, text:n+((D.pending[n]||[]).length?` (${D.pending[n].length})`:"")})));
+  $("workerSel").value = curWorker;
+  const L = $("recList"); L.replaceChildren();
+  const rs = D.pending[curWorker] || [];
+  if (!rs.length) L.append(el("div",{class:"empty",text:"No receipts waiting for this worker."}));
+  for (const cat of Object.keys(CAT_NAMES)){
+    const g = rs.filter(r=>r.cat===cat); if (!g.length) continue;
+    L.append(el("h2",{class:"sec"}, el("span",{text:CAT_NAMES[cat]}), el("span",{class:"mono",text:"RM "+money(g.reduce((a,b)=>a+b.amt,0))})));
+    g.forEach(r=>{
+      const cb = el("input",{type:"checkbox","aria-label":"Include in claim"}); cb.checked = !off.has(r.id);
+      cb.onclick = ev => { ev.stopPropagation(); cb.checked ? off.delete(r.id) : off.add(r.id); row.classList.toggle("off", !cb.checked); sum(); };
+      const row = el("div",{class:"it"+(cb.checked?"":" off"), role:"button", tabindex:"0", onclick:()=>openReceipt(r)}, cb,
+        el("div",{class:"t"}, el("div",{class:"n",text:r.desc||"(no shop name)"}),
+          el("div",{class:"m",text:[fmtDate(r.date), r.bill!==NOBILL?r.bill:"no bill no.", r.plate, r.loc].filter(Boolean).join(" · ")})),
+        el("span",{class:"amt",text:money(r.amt)}));
+      L.append(row);
+    });
+  }
+  sum();
+}
+$("workerSel").onchange = () => { curWorker = $("workerSel").value; off = new Set(); renderReceipts(); };
+const selected = () => (D.pending[curWorker]||[]).filter(r=>!off.has(r.id));
+function sum(){ const s=selected(); $("selSum").textContent="RM "+money(s.reduce((a,b)=>a+b.amt,0)); $("selCnt").textContent=s.length+" selected · "+(curWorker||"—"); $("makeBtn").disabled=!s.length; }
+
+$("makeBtn").onclick = async () => {
+  const s = selected(); if (!s.length) return;
+  const total = money(s.reduce((a,b)=>a+b.amt,0));
+  if (!(await confirmBox(`Make a claim form for ${curWorker}?\n${s.length} receipts · RM ${total}`))) return;
+  const b=$("makeBtn"); b.disabled=true; b.replaceChildren(el("span",{class:"spin"})," Making… about 30 s");
+  try{ const r = await api("office_claim", {worker: curWorker, ids: s.map(x=>x.id)}); haptic("success");
+    toast(r.no+" made · RM "+money(r.total)); off=new Set(); await load("claims"); }
+  catch(e){ toast("Could not make the claim: "+errText(e)); }
+  finally{ b.textContent="Make claim form"; sum(); }
+};
+
+let curRec = null;
+function openReceipt(r){
+  curRec = r;
+  $("rSub").textContent = curWorker + " · " + r.id;
+  $("rErr").hidden = true; $("rSave").disabled=false; $("rSave").textContent="Save changes";
+  $("rTg").hidden = !r.tg; $("rTg").onclick = () => openLink(r.tg);
+  const F = $("rForm"); F.replaceChildren();
+  const inp = (id, label, value, attrs={}, full) => el("div",{class:"f"+(full?" full":"")}, el("label",{for:id,text:label}), el("input",Object.assign({id, value: value??""},attrs)));
+  const catSel = el("select",{id:"rCat"}, ...Object.entries(CAT_NAMES).map(([k,v])=>el("option",{value:k,text:v})));
+  catSel.value = r.cat;
+  F.append(
+    el("div",{class:"f full"}, el("label",{for:"rCat",text:"Type"}), catSel),
+    inp("rDate","Date", r.date, {type:"date"}),
+    inp("rAmt","Total (RM)", money(r.amt), {inputmode:"decimal", class:"mono"}),
+    inp("rDesc","Shop / description", r.desc, {autocapitalize:"characters"}, true),
+    inp("rBill","Bill no. (empty = none)", r.bill===NOBILL?"":r.bill, {autocapitalize:"characters"}, true),
+    inp("rPlate","Car plate (petrol only)", r.plate, {autocapitalize:"characters"}),
+    inp("rLoc","Location", r.loc));
+  const plateBox = $("rPlate").parentElement; const syncPlate=()=>plateBox.hidden = catSel.value!=="PETROL"; catSel.onchange=syncPlate; syncPlate();
+  $("rImg").replaceChildren(el("span",{class:"spin"}));
+  $("rSheet").hidden = false;
+  api("office_image",{id:r.id}).then(j=>{ if(curRec===r) $("rImg").replaceChildren(el("img",{src:`data:${j.mime};base64,${j.b64}`,alt:"Receipt"})); })
+    .catch(e=>{ if(curRec===r) $("rImg").replaceChildren(el("span",{class:"info",text:"Could not load the picture ("+errText(e)+")"})); });
+}
+function closeReceipt(){ $("rSheet").hidden = true; curRec = null; }
+$("rBack").onclick = $("rCancel").onclick = closeReceipt;
+$("rSave").onclick = async () => {
+  const item = { cat:$("rCat").value, date:$("rDate").value, amt:$("rAmt").value, desc:$("rDesc").value, bill:$("rBill").value, plate:$("rPlate").value, loc:$("rLoc").value };
+  const bad = m => { $("rErr").textContent=m; $("rErr").hidden=false; };
+  if (!(Number(item.amt)>0)) return bad("Total must be more than 0.");
+  if (!item.date) return bad("Please pick the date.");
+  $("rSave").disabled=true; $("rSave").replaceChildren(el("span",{class:"spin"})," Saving…");
+  try{ const j = await api("office_receipt",{id:curRec.id, item}); haptic("success"); toast(j.changed?"Saved · Telegram caption updated too":"Nothing changed"); closeReceipt(); await load("receipts"); }
+  catch(e){ bad(errText(e)); $("rSave").disabled=false; $("rSave").textContent="Save changes"; }
+};
+
+/* ---------- claims ---------- */
+function renderClaims(){
+  const V = $("vClaims"); V.replaceChildren();
+  if (!D.claims.length) { V.append(el("div",{class:"empty",text:"No claim forms yet."})); return; }
+  D.claims.forEach(c=>{
+    const cancelled = c.status==="CANCELLED";
+    const card = el("div",{class:"card", style: cancelled?"opacity:.55":""},
+      el("div",{style:"display:flex;justify-content:space-between;gap:8px;align-items:baseline"},
+        el("b",{class:"mono",text:c.no}), el("span",{class:"mono",text:"RM "+money(c.total)})),
+      el("div",{class:"info",text:[c.worker, c.n+" receipts", c.created && fmtDate(c.created.slice(0,10)), cancelled && "CANCELLED"].filter(Boolean).join(" · ")}));
+    if (!cancelled){
+      const send = el("button",{class:"lnk",type:"button",text:"📩 Send files to my Telegram"});
+      send.onclick = async () => { send.disabled=true; send.textContent="Sending…";
+        try{ const j=await api("office_send",{no:c.no}); toast(j.sent+" file(s) sent to your chat with the bot"); }
+        catch(e){ toast(errText(e)); } finally{ send.disabled=false; send.textContent="📩 Send files to my Telegram"; } };
+      const undo = el("button",{class:"lnk bad",type:"button",text:"Undo"});
+      undo.onclick = async () => {
+        if (!(await confirmBox(`Undo ${c.no}?\nIts ${c.n} receipts go back to the "not claimed" list. The files stay in Drive.`))) return;
+        undo.disabled=true; undo.textContent="Undoing…";
+        try{ await api("office_undo",{no:c.no}); haptic("success"); toast(c.no+" cancelled"); await load("claims"); }
+        catch(e){ toast(errText(e)); undo.disabled=false; undo.textContent="Undo"; } };
+      card.append(el("div",{class:"links"}, send,
+        c.pdf && el("button",{class:"lnk",type:"button",text:"PDF",onclick:()=>openLink(c.pdf)}),
+        c.xlsx && el("button",{class:"lnk",type:"button",text:"XLSX",onclick:()=>openLink(c.xlsx)}),
+        c.rpdf && el("button",{class:"lnk",type:"button",text:"Receipts",onclick:()=>openLink(c.rpdf)}), undo));
+    }
+    V.append(card);
+  });
+}
+
+/* ---------- start ---------- */
+(async () => {
+  if (!tg || !tg.initData) return gate("Open from Telegram", "Please open this from the Office button in the CT ART office group.");
+  await load();
+  if (!D) return;
+  const m = startParam.match(/^approve_(\d+)$/);
+  if (m){ show("workers"); const w = D.workers.find(x=>x.id===m[1]); if (w) openWorker(w, true); else toast("That worker was not found"); }
+  else if (D.workers.some(w=>w.status==="PENDING")) show("workers");
+})();
+</script>
+</body>
+</html>

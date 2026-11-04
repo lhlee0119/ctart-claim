@@ -200,6 +200,10 @@ function toast(msg){ const t=$("toast"); t.textContent=msg; t.hidden=false; clea
 
 /* ---------- Telegram ---------- */
 const tg = window.Telegram && window.Telegram.WebApp;
+// Opened from the office group's "Office" / "Approve" button (t.me/<bot>?startapp=office…): go to the office page
+// before anything else runs, so an office person is never added as a worker by mistake.
+const START_PARAM = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || "";
+if (/^(office|approve_)/.test(START_PARAM)) { location.replace("office.html" + location.search + location.hash); throw new Error("office"); }
 if (tg){ try{ tg.ready(); tg.expand(); }catch(e){}
   // stop Telegram's "swipe down to close" so dragging a crop corner downward cannot shut the app
   try{ if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); }catch(e){} }
