@@ -33,6 +33,9 @@ header{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1
 header .row{display:flex;align-items:center;gap:12px}
 header h1{font-size:18px;margin:0;font-weight:700}
 header .sub{font-size:13px;color:var(--muted)}
+.btn.addw{flex:none;flex-direction:column;gap:2px;padding:10px 14px;margin-bottom:6px}
+.btn.addw small{font-weight:400;font-size:12px;color:var(--muted)}
+.linkbox{display:flex;flex-direction:column;gap:10px;margin-top:14px;padding:12px;border:1px dashed var(--line);border-radius:12px}
 .tabs{display:flex;gap:4px;margin-top:10px}
 .tab{flex:1;border:0;background:none;padding:10px 4px 12px;font-weight:700;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer}
 .tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
@@ -129,7 +132,13 @@ h2.sec{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--
     <div class="fgrid">
       <div class="f full"><label for="wName">Full name (as on the claim form)</label><input id="wName" autocomplete="off" autocapitalize="characters" placeholder="e.g. AHMAD BIN ALI"></div>
       <div class="f"><label for="wCode">Code</label><input id="wCode" autocomplete="off" autocapitalize="characters" maxlength="5" placeholder="e.g. AB"><span class="hint">Goes into the claim no. Must be unique.</span></div>
-      <div class="f"><label for="wStatus">Status</label><select id="wStatus"><option value="ACTIVE">ACTIVE · can send</option><option value="PENDING">PENDING · waiting</option><option value="INACTIVE">INACTIVE · stopped</option></select></div>
+      <div class="f full" id="wUserBox"><label for="wUser">Telegram username <i>(optional)</i></label><input id="wUser" autocomplete="off" autocapitalize="none" placeholder="e.g. @ahmad_ali"><span class="hint" id="wUserHint">If they use Telegram, type their @username: when they press Start in the bot they are connected automatically. Leave empty for someone without Telegram (older workers, the boss): the office scans their receipts.</span></div>
+      <div class="f" id="wStatusBox"><label for="wStatus">Status</label><select id="wStatus"><option value="ACTIVE">ACTIVE · can send</option><option value="PENDING">PENDING · waiting</option><option value="INACTIVE">INACTIVE · stopped</option></select></div>
+    </div>
+    <div class="linkbox" id="wLinkBox" hidden>
+      <div class="f full"><label for="wLinkSel">Already added by the office?</label><select id="wLinkSel"></select>
+        <span class="hint">If this person is already in the list without Telegram, connect this account to them instead of approving a new worker. Their receipts stay with them.</span></div>
+      <button class="btn" id="wLinkBtn" type="button">Connect to this worker</button>
     </div>
     <div class="err" id="wErr" hidden></div>
     <p class="info">Changing the name also updates their receipts that are not claimed yet. Claimed receipts keep the old name.</p>
@@ -211,6 +220,8 @@ $("scanTab").onclick = () => { try{ sessionStorage.setItem("ctclaim.startDone","
 /* ---------- workers ---------- */
 function renderWorkers(){
   const V = $("vWorkers"); V.replaceChildren();
+  V.append(el("button",{class:"btn addw",type:"button",onclick:()=>openWorker(null)},
+    el("span",{text:"➕ Add worker"}), el("small",{text:"No Telegram, the boss, or set someone up before they join"})));
   const groups = [["PENDING","Waiting for approval"],["ACTIVE","Active"],["INACTIVE","Stopped"]];
   for (const [st, label] of groups){
     const ws = D.workers.filter(w=>(w.status||"PENDING")===st);
@@ -220,21 +231,39 @@ function renderWorkers(){
     if (!ws.length) L.append(el("div",{class:"empty",text:"Nobody yet."}));
     ws.forEach(w=>L.append(el("button",{class:"it",type:"button",onclick:()=>openWorker(w)},
       el("div",{class:"t"}, el("div",{class:"n",text:w.name || w.tname || "(no name)"}),
-        el("div",{class:"m",text:[w.code && "Code "+w.code, w.name ? w.tname : null, w.username, w.joined && "joined "+fmtDate(w.joined.slice(0,10))].filter(Boolean).join(" · ")})),
+        el("div",{class:"m",text:[w.code && "Code "+w.code, w.manual ? (w.username ? "waiting for "+w.username+" to press Start" : "no Telegram · office scans") : (w.name ? w.tname : null),
+          w.manual ? null : w.username, w.joined && "joined "+fmtDate(w.joined.slice(0,10))].filter(Boolean).join(" · ")})),
       el("span",{class:"pill "+(st==="PENDING"?"warn":st==="ACTIVE"?"ok":"bad"),text:st==="PENDING"?"Approve":st}))));
     V.append(L);
   }
 }
 function openWorker(w, approving){
-  editing = w;
-  $("wTitle").textContent = w.name || w.tname || "Worker";
-  $("wSub").textContent = [w.tname, w.username, "ID "+w.id].filter(Boolean).join(" · ");
+  const isNew = !w; w = w || {id:"", status:"ACTIVE", manual:true};
+  editing = Object.assign({_new:isNew}, w);
+  $("wTitle").textContent = isNew ? "Add worker" : (w.name || w.tname || "Worker");
+  $("wSub").textContent = isNew ? "Added by the office" : w.manual ? (w.username ? "Not connected yet · "+w.username : "No Telegram · the office scans their receipts") : [w.tname, w.username, "ID "+w.id].filter(Boolean).join(" · ");
   $("wName").value = w.name || (w.tname||"").toUpperCase();
   $("wCode").value = w.code || "";
+  $("wUser").value = w.manual ? (w.username||"") : "";
+  $("wUserBox").hidden = !w.manual;               // real Telegram accounts already have theirs
+  $("wStatusBox").hidden = isNew;
   $("wStatus").value = approving || w.status==="PENDING" ? "ACTIVE" : (w.status || "ACTIVE");
-  $("wErr").hidden = true; $("wSave").disabled = false; $("wSave").textContent = w.status==="PENDING" ? "Approve" : "Save";
+  // a person who pressed Start may be someone the office already added without Telegram
+  const pre = D.workers.filter(x=>x.manual && x.status!=="INACTIVE");
+  $("wLinkBox").hidden = !(w.status==="PENDING" && !w.manual && pre.length);
+  $("wLinkSel").replaceChildren(el("option",{value:"",text:"— No, this is a new worker —"}), ...pre.map(x=>el("option",{value:x.id,text:x.name+(x.code?" ("+x.code+")":"")})));
+  $("wErr").hidden = true; $("wSave").disabled = false; $("wSave").textContent = isNew ? "Add worker" : w.status==="PENDING" ? "Approve" : "Save";
   $("wSheet").hidden = false; setTimeout(()=>$(w.name ? "wCode" : "wName").focus(), 50);
 }
+$("wLinkBtn").onclick = async () => {
+  const mid = $("wLinkSel").value; const bad = m => { $("wErr").textContent=m; $("wErr").hidden=false; };
+  if (!mid) return bad("Choose the worker this person is.");
+  const m = D.workers.find(x=>x.id===mid);
+  if (!(await confirmBox(`Connect this Telegram account to ${m.name}?\nThey can then send their own receipts.`))) return;
+  $("wLinkBtn").disabled = true;
+  try{ await api("office_link",{tgId: editing.id, manualId: mid}); haptic("success"); toast("Connected · they got a message"); closeWorker(); await load("workers"); }
+  catch(e){ bad(errText(e)); $("wLinkBtn").disabled = false; }
+};
 function closeWorker(){ $("wSheet").hidden = true; editing = null; }
 $("wBack").onclick = $("wCancel").onclick = closeWorker;
 $("wCode").oninput = () => { $("wCode").value = $("wCode").value.toUpperCase().replace(/[^A-Z0-9]/g,""); };
@@ -243,13 +272,14 @@ $("wSave").onclick = async () => {
   const bad = m => { $("wErr").textContent=m; $("wErr").hidden=false; };
   if (!name) return bad("Please type the full name.");
   if (!code) return bad("Please type a code (1–5 letters or numbers).");
-  const clash = D.workers.find(x=>x.id!==editing.id && String(x.code||"").toUpperCase()===code.toUpperCase());
+  const clash = D.workers.find(x=>(editing._new || x.id!==editing.id) && String(x.code||"").toUpperCase()===code.toUpperCase());
   if (clash) return bad("Code "+code+" is already used by "+(clash.name||clash.tname)+".");
   $("wSave").disabled = true; $("wSave").replaceChildren(el("span",{class:"spin"}), " Saving…");
-  try{ await api("office_worker", {id: editing.id, name, code, status}); haptic("success");
-    toast(status==="ACTIVE" && editing.status!=="ACTIVE" ? "Approved · they got a message" : "Saved");
+  const username = $("wUserBox").hidden ? "" : $("wUser").value.trim();
+  try{ await api("office_worker", editing._new ? {create:true, name, code, username} : {id: editing.id, name, code, status, username}); haptic("success");
+    toast(editing._new ? "Added "+name.toUpperCase() : status==="ACTIVE" && editing.status!=="ACTIVE" ? "Approved · they got a message" : "Saved");
     closeWorker(); await load("workers"); }
-  catch(e){ bad(errText(e)); $("wSave").disabled=false; $("wSave").textContent="Save"; }
+  catch(e){ bad(errText(e)); $("wSave").disabled=false; $("wSave").textContent= editing._new ? "Add worker" : "Save"; }
 };
 
 /* ---------- receipts ---------- */
@@ -347,7 +377,7 @@ function renderClaims(){
         catch(e){ toast(errText(e)); } finally{ send.disabled=false; send.textContent="📩 Send files to my Telegram"; } };
       const undo = el("button",{class:"lnk bad",type:"button",text:"Undo"});
       undo.onclick = async () => {
-        if (!(await confirmBox(`Undo ${c.no}?\nIts ${c.n} receipts go back to the "not claimed" list. The files stay in Drive.`))) return;
+        if (!(await confirmBox(`Undo ${c.no}?\n\n⚠️ Has this claim already been given to the accountant or paid? If yes, do NOT undo it: fix the mistake in next month's claim instead.\n\nUndo puts its ${c.n} receipts back in the "not claimed" list. The old files stay in Drive.`))) return;
         undo.disabled=true; undo.textContent="Undoing…";
         try{ await api("office_undo",{no:c.no}); haptic("success"); toast(c.no+" cancelled"); await load("claims"); }
         catch(e){ toast(errText(e)); undo.disabled=false; undo.textContent="Undo"; } };
