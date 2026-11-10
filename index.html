@@ -100,6 +100,8 @@ h2.sec{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--
 .f input,.f select{min-height:46px;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:0 12px;width:100%}
 .f.need input{border-color:var(--bad)}
 .f .err{color:var(--bad);font-size:13px}
+.forbox{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.forhint{margin:0;font-size:13px;color:var(--muted)}
 .note{font-size:13px;border-radius:10px;padding:10px 12px;background:var(--warn-soft);color:var(--warn)}
 </style>
 </head>
@@ -118,6 +120,11 @@ h2.sec{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--
 <!-- HOME -->
 <main class="gut" id="vHome" hidden>
   <div class="banner" id="aiBanner" hidden>Auto-read is paused this month. Please fill in the details yourself. Bacaan automatik dihentikan bulan ini, sila isi sendiri.</div>
+  <section class="forbox" id="forBox" hidden>
+    <div class="f"><label for="forSel">Scanning for · Imbas untuk</label><select id="forSel"></select></div>
+    <p class="forhint" id="forHint" hidden>Send or remove the receipts below before choosing another worker.</p>
+    <button class="btn" id="toOffice" type="button" style="flex:none"><span class="lab">‹ Back to Office</span></button>
+  </section>
   <section class="intro">
     <h2>Scan a receipt, we fill in the claim</h2>
     <p>Imbas resit anda. Sistem akan baca dan isi tuntutan untuk anda.</p>
@@ -203,7 +210,10 @@ const tg = window.Telegram && window.Telegram.WebApp;
 // Opened from the office group's "Office" / "Approve" button (t.me/<bot>?startapp=office…): go to the office page
 // before anything else runs, so an office person is never added as a worker by mistake.
 const START_PARAM = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || "";
-if (/^(office|approve_)/.test(START_PARAM)) { location.replace("office.html" + location.search + location.hash); throw new Error("office"); }
+// Office people open this page from the Office app's "Scan" tab (index.html?office=1) to scan for a worker
+const OFFICE_MODE = new URLSearchParams(location.search).get("office") === "1";
+let forId = "";           // office mode: Telegram ID of the worker the receipts are for
+if (!OFFICE_MODE && /^(office|approve_)/.test(START_PARAM)) { location.replace("office.html" + location.search + location.hash); throw new Error("office"); }
 if (tg){ try{ tg.ready(); tg.expand(); }catch(e){}
   // stop Telegram's "swipe down to close" so dragging a crop corner downward cannot shut the app
   try{ if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); }catch(e){} }
@@ -212,7 +222,8 @@ applyTheme(); if (tg && tg.onEvent) tg.onEvent("themeChanged", applyTheme);
 function haptic(kind){ try{ tg.HapticFeedback.notificationOccurred(kind); }catch(e){} }
 
 async function api(action, body={}){
-  const res = await fetch(API_URL, {method:"POST", body: JSON.stringify(Object.assign({action, initData: tg ? tg.initData : ""}, body))});
+  const extra = OFFICE_MODE ? {office:true, forId} : {};
+  const res = await fetch(API_URL, {method:"POST", body: JSON.stringify(Object.assign({action, initData: tg ? tg.initData : ""}, extra, body))});
   if (!res.ok) throw {error:"network"};
   return res.json();
 }
@@ -233,7 +244,7 @@ function show(v){
   // ask "close anyway?" while a receipt is being cropped/checked or scanned receipts are not sent yet
   try{ (inFlow || items.length) ? tg.enableClosingConfirmation() : tg.disableClosingConfirmation(); }catch(e){}
   $("hTitle").textContent = {Gate:"CT ART Claim", Home:"CT ART Claim", Adjust:"Crop receipt", Review:"Check receipt"}[v];
-  $("hSub").textContent = v==="Home" ? (me ? me.name : "") : v==="Gate" ? "Receipts to claim · Resit untuk tuntutan"
+  $("hSub").textContent = v==="Home" ? (OFFICE_MODE ? (me && me.name ? "Office · for "+me.name : "Office · choose a worker") : (me ? me.name : "")) : v==="Gate" ? "Receipts to claim · Resit untuk tuntutan"
     : ({Adjust:"Potong resit", Review:"Semak butiran"}[v] + (queue.length ? ` (${queue.length} more · lagi ${queue.length})` : ""));
   $("v"+v).scrollTop = 0;
 }
@@ -246,6 +257,11 @@ function gate(title, text){ const g=$("gateBox"); g.textContent=""; g.append(el(
 function renderHome(){
   try{ if(!$("vHome").hidden) items.length ? tg.enableClosingConfirmation() : tg.disableClosingConfirmation(); }catch(e){}
   $("aiBanner").hidden = !(me && me.aiPaused);
+  if (OFFICE_MODE){
+    $("forBox").hidden = false;
+    $("forSel").disabled = items.length > 0; $("forHint").hidden = !items.length;
+    $("scanBtn").disabled = $("galBtn").disabled = !forId;
+  }
   const L=$("list"); L.textContent="";
   $("batchHead").hidden = !items.length;
   if (!items.length){
@@ -728,12 +744,40 @@ $("sendBtn").onclick = async () => {
   toast(left.length ? `Sent ${done} of ${total}. Check the ones still in the list.` : `Sent ${done} · ${done} resit dihantar ✓`);
   try{ const m=await api("me"); if(m.ok&&m.status==="ACTIVE") me=m; }catch(e){}
   $("scanBtn").disabled=false; renderHome();
+  if (OFFICE_MODE) show("Home");
+};
+
+/* ---------- office mode: scan for a worker ---------- */
+async function bootOffice(){
+  let m;
+  try{ m=await api("me"); }catch(e){ gate("No connection","Check your internet and open again."); return; }
+  if(!m.ok){ gate(m.error==="not_office" ? "Office only" : "Could not sign in", m.error==="not_office" ? "Only members of the CT ART office group can scan for workers." : "Close this and open it again from the bot."); return; }
+  const sel=$("forSel"); sel.textContent="";
+  sel.append(el("option",{value:"",text:"— Choose worker —"}));
+  (m.workers||[]).forEach(w=>sel.append(el("option",{value:w.id,text:w.name+(w.code?" ("+w.code+")":"")})));
+  me=m; renderHome(); show("Home");
+}
+$("forSel").onchange = async e => {
+  forId = e.target.value; me = Object.assign({}, me, {name:"", recent:[], medical:[]});
+  renderHome(); show("Home");
+  if (!forId) return;
+  try{ const m=await api("me"); if(m.ok) me=m; else toast("Could not load this worker"); }catch(err){ toast("No connection"); }
+  renderHome(); show("Home");
+};
+$("toOffice").onclick = async () => {
+  if (items.length){
+    const ok = await new Promise(res=>{ try{ tg.showConfirm("Receipts not sent yet will be lost. Go back anyway?", v=>res(!!v)); }catch(e){ res(window.confirm("Receipts not sent yet will be lost. Go back anyway?")); } });
+    if (!ok) return;
+  }
+  try{ tg.disableClosingConfirmation(); }catch(e){}
+  location.href = "office.html" + location.hash;
 };
 
 /* ---------- boot ---------- */
 (async()=>{
   if(!tg || !tg.initData){ gate("Open this from Telegram","Open the CT ART Claim bot in Telegram and tap the Claim button. Buka bot CT ART Claim di Telegram."); return; }
   if(API_URL.indexOf("http")!==0){ gate("Not set up yet","The office still needs to add the server address to this app."); return; }
+  if (OFFICE_MODE) return bootOffice();
   try{
     const m=await api("me");
     if(!m.ok){ gate("Could not sign in", m.error==="auth" ? "Close this and open it again from the bot. Tutup dan buka semula dari bot." : "Please try again later. Sila cuba lagi."); return; }

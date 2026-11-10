@@ -101,6 +101,7 @@ h2.sec{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--
     <button class="tab" role="tab" data-tab="workers" aria-selected="false">Workers<span class="cnt" id="cntW" hidden></span></button>
     <button class="tab" role="tab" data-tab="receipts" aria-selected="true">Receipts</button>
     <button class="tab" role="tab" data-tab="claims" aria-selected="false">Claims</button>
+    <button class="tab" type="button" id="scanTab">📷 Scan</button>
   </div>
 </header>
 
@@ -203,7 +204,9 @@ function show(t){
   $("vWorkers").hidden = t!=="workers"; $("vReceipts").hidden = t!=="receipts"; $("vClaims").hidden = t!=="claims";
   $("barReceipts").hidden = t!=="receipts";
 }
-document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>show(b.dataset.tab));
+document.querySelectorAll(".tab[data-tab]").forEach(b=>b.onclick=()=>show(b.dataset.tab));
+// scan receipts for a worker: the worker app in office mode (keeps the Telegram sign-in in the URL hash)
+$("scanTab").onclick = () => { try{ sessionStorage.setItem("ctclaim.startDone","1"); }catch(e){} location.href = "index.html?office=1" + location.hash; };
 
 /* ---------- workers ---------- */
 function renderWorkers(){
@@ -362,7 +365,9 @@ function renderClaims(){
   if (!tg || !tg.initData) return gate("Open from Telegram", "Please open this from the Office button in the CT ART office group.");
   await load();
   if (!D) return;
-  const m = startParam.match(/^approve_(\d+)$/);
+  // open the Approve editor only on the first visit, not when coming back from Scan
+  let startDone = false; try{ startDone = sessionStorage.getItem("ctclaim.startDone")==="1"; sessionStorage.setItem("ctclaim.startDone","1"); }catch(e){}
+  const m = startDone ? null : startParam.match(/^approve_(\d+)$/);
   if (m){ show("workers"); const w = D.workers.find(x=>x.id===m[1]); if (w) openWorker(w, true); else toast("That worker was not found"); }
   else if (D.workers.some(w=>w.status==="PENDING")) show("workers");
 })();
