@@ -795,11 +795,15 @@ $("toOffice").onclick = async () => {
   if(!tg || !tg.initData){ gate("Open this from Telegram","Open the CT ART Claim bot in Telegram and tap the Claim button. Buka bot CT ART Claim di Telegram."); return; }
   if(API_URL.indexOf("http")!==0){ gate("Not set up yet","The office still needs to add the server address to this app."); return; }
   if (OFFICE_MODE) return bootOffice();
+  // office people land in the Office app, also when they press "Open" in the chat list
+  const toOffice = () => { try{ tg.disableClosingConfirmation(); }catch(e){} location.replace("office.html" + location.hash); };
+  if (cacheGet("ctclaim.isOffice")) return toOffice();
   const cached = cacheGet("ctclaim.me");
   if (cached && cached.status==="ACTIVE"){ me=cached; renderHome(); show("Home"); }
   warmCV();
   try{
     const m=await api("me");
+    if(m.ok && m.status==="OFFICE"){ cachePut("ctclaim.isOffice", 1); cacheDrop("ctclaim.me"); return toOffice(); }
     if(!m.ok){ cacheDrop("ctclaim.me"); gate("Could not sign in", m.error==="auth" ? "Close this and open it again from the bot. Tutup dan buka semula dari bot." : "Please try again later. Sila cuba lagi."); return; }
     if(m.status!=="ACTIVE"){ cacheDrop("ctclaim.me"); gate("Waiting for the office","The office will activate your account soon. Pejabat akan aktifkan akaun anda."); return; }
     cachePut("ctclaim.me", m);

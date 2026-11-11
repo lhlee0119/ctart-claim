@@ -207,8 +207,8 @@ async function load(keepTab, quick){
   let fresh;
   try{ fresh = await api("office_data"); }
   catch(e){
-    if (e && (e.error==="not_office" || e.error==="auth")){ cacheDrop("ctclaim.office"); cacheDrop("ctclaim.scanWorkers"); D = null; }
-    if (e && e.error==="not_office") return gate("Office only", "This page is for members of the CT ART office group. Ask the office to add you to the group.");
+    if (e && (e.error==="not_office" || e.error==="auth")){ cacheDrop("ctclaim.office"); cacheDrop("ctclaim.scanWorkers"); cacheDrop("ctclaim.isOffice"); D = null; }
+    if (e && e.error==="not_office") return gate("Office only", "This page is for members of the CT ART office group. To send your own receipts, close this and press Open again.");
     if (e && e.error==="auth") return gate("Open from Telegram", "Please open this from the Office button in the CT ART office group.");
     if (cached){ $("hSub").textContent = D.me + " · offline, showing last data"; return; }
     return gate("Could not load", errText(e));
