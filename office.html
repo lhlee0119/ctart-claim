@@ -35,6 +35,8 @@ header h1{font-size:18px;margin:0;font-weight:700}
 header .sub{font-size:13px;color:var(--muted)}
 .btn.addw{flex:none;flex-direction:column;gap:2px;padding:10px 14px;margin-bottom:6px}
 .btn.addw small{font-weight:400;font-size:12px;color:var(--muted)}
+.it .del{flex:none;border:0;background:transparent;font-size:18px;padding:6px 4px 6px 10px;cursor:pointer;opacity:.7}
+.it .del:hover{opacity:1}
 .linkbox{display:flex;flex-direction:column;gap:10px;margin-top:14px;padding:12px;border:1px dashed var(--line);border-radius:12px}
 .tabs{display:flex;gap:4px;margin-top:10px}
 .tab{flex:1;border:0;background:none;padding:10px 4px 12px;font-weight:700;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer}
@@ -154,6 +156,7 @@ h2.sec{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--
     <div class="fgrid" id="rForm"></div>
     <div class="err" id="rErr" hidden></div>
     <button class="lnk" id="rTg" type="button" style="align-self:flex-start">Open in Telegram group</button>
+    <button class="btn danger sm" id="rDel" type="button" style="align-self:flex-start">🗑 Delete this receipt</button>
   </main>
   <div class="bar gut"><button class="btn" id="rCancel">Cancel</button><button class="btn primary" id="rSave">Save changes</button></div>
 </div>
@@ -303,7 +306,8 @@ function renderReceipts(){
       const row = el("div",{class:"it"+(cb.checked?"":" off"), role:"button", tabindex:"0", onclick:()=>openReceipt(r)}, cb,
         el("div",{class:"t"}, el("div",{class:"n",text:r.desc||"(no shop name)"}),
           el("div",{class:"m",text:[fmtDate(r.date), r.bill!==NOBILL?r.bill:"no bill no.", r.plate, r.loc].filter(Boolean).join(" · ")})),
-        el("span",{class:"amt",text:money(r.amt)}));
+        el("span",{class:"amt",text:money(r.amt)}),
+        el("button",{class:"del",type:"button","aria-label":"Delete receipt",title:"Delete",onclick:ev=>{ ev.stopPropagation(); delReceipt(r); }},"🗑"));
       L.append(row);
     });
   }
@@ -324,6 +328,12 @@ $("makeBtn").onclick = async () => {
   finally{ b.textContent="Make claim form"; sum(); }
 };
 
+// delete a receipt that is not in a claim yet (test, double scan, wrong photo)
+async function delReceipt(r){
+  if (!(await confirmBox(`Delete this receipt?\n\nRM ${money(r.amt)} · ${r.desc||"(no shop name)"} · ${fmtDate(r.date)}\n\nThe photo goes to the Drive bin and the group message is removed. This is written in the Office Log.`))) return false;
+  try{ await api("office_delete",{id:r.id}); haptic("success"); toast("Deleted · RM "+money(r.amt)); off.delete(r.id); await load("receipts"); return true; }
+  catch(e){ toast("Could not delete: "+errText(e)); return false; }
+}
 let curRec = null;
 function openReceipt(r){
   curRec = r;
@@ -350,6 +360,7 @@ function openReceipt(r){
 }
 function closeReceipt(){ $("rSheet").hidden = true; curRec = null; }
 $("rBack").onclick = $("rCancel").onclick = closeReceipt;
+$("rDel").onclick = async () => { const r = curRec; if (r && await delReceipt(r)) closeReceipt(); };
 $("rSave").onclick = async () => {
   const item = { cat:$("rCat").value, date:$("rDate").value, amt:$("rAmt").value, desc:$("rDesc").value, bill:$("rBill").value, plate:$("rPlate").value, loc:$("rLoc").value };
   const bad = m => { $("rErr").textContent=m; $("rErr").hidden=false; };
