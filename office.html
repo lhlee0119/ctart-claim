@@ -331,8 +331,17 @@ $("makeBtn").onclick = async () => {
 // delete a receipt that is not in a claim yet (test, double scan, wrong photo)
 async function delReceipt(r){
   if (!(await confirmBox(`Delete this receipt?\n\nRM ${money(r.amt)} · ${r.desc||"(no shop name)"} · ${fmtDate(r.date)}\n\nThe photo goes to the Drive bin and the group message is removed. This is written in the Office Log.`))) return false;
-  try{ await api("office_delete",{id:r.id}); haptic("success"); toast("Deleted · RM "+money(r.amt)); off.delete(r.id); await load("receipts"); return true; }
-  catch(e){ toast("Could not delete: "+errText(e)); return false; }
+  // take it off the list straight away; the server finishes in the background (photo to bin, group message)
+  const owner = Object.keys(D.pending).find(k=>(D.pending[k]||[]).some(x=>x.id===r.id));
+  const list = D.pending[owner] || [], idx = list.findIndex(x=>x.id===r.id);
+  if (idx>=0) list.splice(idx,1);
+  if (owner && !list.length) delete D.pending[owner];
+  off.delete(r.id); renderReceipts(); haptic("success"); toast("Deleted · RM "+money(r.amt));
+  api("office_delete",{id:r.id}).catch(e=>{
+    if (owner){ (D.pending[owner] = D.pending[owner] || []).splice(Math.max(idx,0),0,r); renderReceipts(); }
+    toast("Could not delete "+(r.desc||"receipt")+": "+errText(e));
+  });
+  return true;
 }
 let curRec = null;
 function openReceipt(r){
