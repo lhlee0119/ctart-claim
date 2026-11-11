@@ -747,15 +747,32 @@ $("sendBtn").onclick = async () => {
   if (OFFICE_MODE) show("Home");
 };
 
+/* ---------- quick start: show what we had last time, then refresh in the background ---------- */
+const UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || "";
+function cacheGet(k){ try{ const v=JSON.parse(localStorage.getItem(k+"."+UID)||"null"); return v && Date.now()-v.t < 86400000 ? v.d : null; }catch(e){ return null; } }
+function cachePut(k,d){ try{ localStorage.setItem(k+"."+UID, JSON.stringify({t:Date.now(), d})); }catch(e){} }
+function cacheDrop(k){ try{ localStorage.removeItem(k+"."+UID); }catch(e){} }
+// the edge finder (3.5 MB, cached by the phone) loads while the person looks at the screen, not after the photo
+function warmCV(){ setTimeout(()=>{ try{ loadCV(); }catch(e){} }, 1200); }
+
 /* ---------- office mode: scan for a worker ---------- */
-async function bootOffice(){
-  let m;
-  try{ m=await api("me"); }catch(e){ gate("No connection","Check your internet and open again."); return; }
-  if(!m.ok){ gate(m.error==="not_office" ? "Office only" : "Could not sign in", m.error==="not_office" ? "Only members of the CT ART office group can scan for workers." : "Close this and open it again from the bot."); return; }
-  const sel=$("forSel"); sel.textContent="";
+function fillWorkers(list){
+  const sel=$("forSel"), keep=sel.value || forId; sel.textContent="";
   sel.append(el("option",{value:"",text:"— Choose worker —"}));
-  (m.workers||[]).forEach(w=>sel.append(el("option",{value:w.id,text:w.name+(w.code?" ("+w.code+")":"")})));
-  me=m; renderHome(); show("Home");
+  (list||[]).forEach(w=>sel.append(el("option",{value:w.id,text:w.name+(w.code?" ("+w.code+")":"")})));
+  if (keep && (list||[]).some(w=>w.id===keep)) sel.value = keep;
+}
+async function bootOffice(){
+  const cached = cacheGet("ctclaim.scanWorkers");
+  if (cached){ fillWorkers(cached); me = {office:true, status:"CHOOSE", name:"", recent:[], medical:[], bills:[], workers:cached}; renderHome(); show("Home"); }
+  warmCV();
+  let m;
+  try{ m=await api("me"); }catch(e){ if(!cached) gate("No connection","Check your internet and open again."); return; }
+  if(!m.ok){ cacheDrop("ctclaim.scanWorkers"); gate(m.error==="not_office" ? "Office only" : "Could not sign in", m.error==="not_office" ? "Only members of the CT ART office group can scan for workers." : "Close this and open it again from the bot."); return; }
+  cachePut("ctclaim.scanWorkers", m.workers||[]);
+  fillWorkers(m.workers);
+  if (!forId){ me=m; renderHome(); show("Home"); }    // a worker picked meanwhile keeps their own data
+  else me = Object.assign({}, me, {bills:m.bills, aiPaused:m.aiPaused, workers:m.workers});
 }
 $("forSel").onchange = async e => {
   forId = e.target.value; me = Object.assign({}, me, {name:"", recent:[], medical:[]});
@@ -778,12 +795,16 @@ $("toOffice").onclick = async () => {
   if(!tg || !tg.initData){ gate("Open this from Telegram","Open the CT ART Claim bot in Telegram and tap the Claim button. Buka bot CT ART Claim di Telegram."); return; }
   if(API_URL.indexOf("http")!==0){ gate("Not set up yet","The office still needs to add the server address to this app."); return; }
   if (OFFICE_MODE) return bootOffice();
+  const cached = cacheGet("ctclaim.me");
+  if (cached && cached.status==="ACTIVE"){ me=cached; renderHome(); show("Home"); }
+  warmCV();
   try{
     const m=await api("me");
-    if(!m.ok){ gate("Could not sign in", m.error==="auth" ? "Close this and open it again from the bot. Tutup dan buka semula dari bot." : "Please try again later. Sila cuba lagi."); return; }
-    if(m.status!=="ACTIVE"){ gate("Waiting for the office","The office will activate your account soon. Pejabat akan aktifkan akaun anda."); return; }
-    me=m; renderHome(); show("Home");
-  }catch(e){ gate("No connection","Check your internet and open again. Semak internet dan buka semula."); }
+    if(!m.ok){ cacheDrop("ctclaim.me"); gate("Could not sign in", m.error==="auth" ? "Close this and open it again from the bot. Tutup dan buka semula dari bot." : "Please try again later. Sila cuba lagi."); return; }
+    if(m.status!=="ACTIVE"){ cacheDrop("ctclaim.me"); gate("Waiting for the office","The office will activate your account soon. Pejabat akan aktifkan akaun anda."); return; }
+    cachePut("ctclaim.me", m);
+    me=m; if (!items.length) { renderHome(); show("Home"); } else renderHome();
+  }catch(e){ if(!cached) gate("No connection","Check your internet and open again. Semak internet dan buka semula."); }
 })();
 </script>
 </body>

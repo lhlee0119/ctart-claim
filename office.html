@@ -196,13 +196,30 @@ let D = null, tab = "receipts", curWorker = "", off = new Set(), editing = null;
 function gate(title, text){ for (const v of ["vWorkers","vReceipts","vClaims"]) $(v).hidden=true; $("barReceipts").hidden=true; $("tabs").hidden=true;
   $("vGate").hidden=false; $("gateBox").replaceChildren(el("h2",{text:title}), el("p",{text})); }
 
-async function load(keepTab){
-  try{ D = await api("office_data"); }
+// quick start: show the last data at once, then refresh it in the background
+const UID = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id) || "";
+function cacheGet(k){ try{ const v=JSON.parse(localStorage.getItem(k+"."+UID)||"null"); return v && Date.now()-v.t < 86400000 ? v.d : null; }catch(e){ return null; } }
+function cachePut(k,d){ try{ localStorage.setItem(k+"."+UID, JSON.stringify({t:Date.now(), d})); }catch(e){} }
+function cacheDrop(k){ try{ localStorage.removeItem(k+"."+UID); }catch(e){} }
+async function load(keepTab, quick){
+  const cached = quick && !D ? cacheGet("ctclaim.office") : null;
+  if (cached){ D = cached; paint(keepTab); $("hSub").textContent = D.me + " · updating…"; }
+  let fresh;
+  try{ fresh = await api("office_data"); }
   catch(e){
+    if (e && (e.error==="not_office" || e.error==="auth")){ cacheDrop("ctclaim.office"); cacheDrop("ctclaim.scanWorkers"); D = null; }
     if (e && e.error==="not_office") return gate("Office only", "This page is for members of the CT ART office group. Ask the office to add you to the group.");
     if (e && e.error==="auth") return gate("Open from Telegram", "Please open this from the Office button in the CT ART office group.");
+    if (cached){ $("hSub").textContent = D.me + " · offline, showing last data"; return; }
     return gate("Could not load", errText(e));
   }
+  D = fresh;
+  cachePut("ctclaim.office", D);
+  // the Scan page can show its worker list at once too
+  cachePut("ctclaim.scanWorkers", D.workers.filter(w=>w.status==="ACTIVE"&&w.name).map(w=>({id:w.id,name:w.name,code:w.code})).sort((a,b)=>a.name.localeCompare(b.name)));
+  paint(cached ? null : keepTab);
+}
+function paint(keepTab){
   $("hSub").textContent = D.me;
   $("vGate").hidden = true; $("tabs").hidden = false;
   const pend = D.workers.filter(w=>w.status==="PENDING").length;
@@ -413,7 +430,7 @@ function renderClaims(){
 /* ---------- start ---------- */
 (async () => {
   if (!tg || !tg.initData) return gate("Open from Telegram", "Please open this from the Office button in the CT ART office group.");
-  await load();
+  await load(null, true);
   if (!D) return;
   // open the Approve editor only on the first visit, not when coming back from Scan
   let startDone = false; try{ startDone = sessionStorage.getItem("ctclaim.startDone")==="1"; sessionStorage.setItem("ctclaim.startDone","1"); }catch(e){}
