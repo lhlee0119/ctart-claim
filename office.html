@@ -100,6 +100,10 @@ body.locked > main{overflow:hidden}
 /* no scroll box inside the page (it took the finger on iPhone): the whole receipt fits; tap to see it big */
 .imgbox img{max-width:100%;max-height:45vh;object-fit:contain;display:block;cursor:zoom-in}
 .imgbox.big img{max-height:none;cursor:zoom-out}
+/* two-finger zoom stays inside the box; one finger moves the picture while zoomed */
+.imgbox{overflow:hidden;position:relative;-webkit-user-select:none;user-select:none}
+.imgbox img{transform-origin:center;will-change:transform;-webkit-touch-callout:none}
+.zoomhint{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;padding:3px 8px;border-radius:999px;pointer-events:none}
 .info{font-size:13px;color:var(--muted)}
 </style>
 </head>
@@ -391,14 +395,48 @@ function openReceipt(r){
     inp("rLoc","Location", r.loc, {}, true));
   const plateBox = $("rPlate").parentElement; const syncPlate=()=>plateBox.hidden = catSel.value!=="PETROL"; catSel.onchange=syncPlate; syncPlate();
   $("rImg").replaceChildren(el("span",{class:"spin"}));
-  $("rSheet").hidden = false; $("rImg").classList.remove("big"); lockPage(true); $("rSheet").querySelector("main").scrollTop = 0;
+  $("rSheet").hidden = false; $("rImg").classList.remove("big"); zoomReset(); lockPage(true); $("rSheet").querySelector("main").scrollTop = 0;
   api("office_image",{id:r.id}).then(j=>{ if(curRec===r) $("rImg").replaceChildren(el("img",{src:`data:${j.mime};base64,${j.b64}`,alt:"Receipt"})); })
     .catch(e=>{ if(curRec===r) $("rImg").replaceChildren(el("span",{class:"info",text:"Could not load the picture ("+errText(e)+")"})); });
 }
 function closeReceipt(){ $("rSheet").hidden = true; curRec = null; lockPage(false); }
 // while a sheet is open, the list behind it must not take the swipe
 function lockPage(on){ document.body.classList.toggle("locked", on || !$("wSheet").hidden || !$("rSheet").hidden); }
-$("rImg").onclick = () => $("rImg").classList.toggle("big");
+// receipt picture: tap = bigger / back; pinch = zoom inside the box; drag = move while zoomed
+let zs=1, zx=0, zy=0, zStart=null, zMoved=false;
+function zImg(){ return $("rImg").querySelector("img"); }
+function zApply(){ const i=zImg(); if(!i) return; i.style.transform = zs>1 ? `translate(${zx}px,${zy}px) scale(${zs})` : "";
+  let h=$("rImg").querySelector(".zoomhint"); if (zs>1){ if(!h){ h=el("span",{class:"zoomhint"}); $("rImg").append(h); } h.textContent=zs.toFixed(1)+"× · tap to reset"; } else if (h) h.remove(); }
+function zClamp(){ const i=zImg(), b=$("rImg"); if(!i) return;
+  zs=Math.min(6,Math.max(1,zs)); if (zs<1.02){ zs=1; zx=0; zy=0; return; }
+  const mx=Math.max(0,(i.offsetWidth*zs-b.clientWidth)/2), my=Math.max(0,(i.offsetHeight*zs-b.clientHeight)/2);
+  zx=Math.min(mx,Math.max(-mx,zx)); zy=Math.min(my,Math.max(-my,zy)); }
+function zoomReset(){ zs=1; zx=0; zy=0; zStart=null; zApply(); }
+(()=>{
+  const box=$("rImg");
+  const dist=t=>Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+  const mid=t=>{ const r=box.getBoundingClientRect(); return { x:(t[0].clientX+t[1].clientX)/2-r.left-r.width/2, y:(t[0].clientY+t[1].clientY)/2-r.top-r.height/2 }; };
+  const grab=t=>({ px:t.clientX, py:t.clientY, x:zx, y:zy });
+  box.addEventListener("touchstart", e=>{ const t=e.touches; if(!zImg()) return;
+    if (t.length===2){ zStart={ d:dist(t), m:mid(t), s:zs, x:zx, y:zy }; zMoved=true; e.preventDefault(); }
+    else if (t.length===1 && zs>1){ zStart=grab(t[0]); zMoved=false; }   // zoomed: one finger moves the picture
+    else { zStart=null; zMoved=false; }                                  // not zoomed: one finger scrolls the page as usual
+  }, {passive:false});
+  box.addEventListener("touchmove", e=>{ const t=e.touches; if(!zStart) return;
+    if (t.length===2 && zStart.d){ const m=mid(t), k=dist(t)/zStart.d;
+      zs=zStart.s*k; zx=m.x-(zStart.m.x-zStart.x)*k; zy=m.y-(zStart.m.y-zStart.y)*k; zClamp(); zApply(); e.preventDefault(); }
+    else if (t.length===1 && zStart.px!=null){ const dx=t[0].clientX-zStart.px, dy=t[0].clientY-zStart.py;
+      if (Math.abs(dx)+Math.abs(dy)>6) zMoved=true; zx=zStart.x+dx; zy=zStart.y+dy; zClamp(); zApply(); e.preventDefault(); }
+  }, {passive:false});
+  box.addEventListener("touchend", e=>{ const t=e.touches;
+    if (t.length===1 && zs>1) zStart=grab(t[0]); else if (!t.length) zStart=null; });
+  box.addEventListener("gesturestart", e=>e.preventDefault());   // iPhone: never zoom the whole app
+  box.addEventListener("click", ()=>{
+    if (zMoved){ zMoved=false; return; }                 // that was a pinch or drag, not a tap
+    if (zs>1) return zoomReset();                        // zoomed: tap goes back to normal
+    box.classList.toggle("big");
+  });
+})();
 $("rBack").onclick = $("rCancel").onclick = closeReceipt;
 $("rDel").onclick = async () => { const r = curRec; if (r && await delReceipt(r)) closeReceipt(); };
 $("rSave").onclick = async () => {
