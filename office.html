@@ -338,7 +338,13 @@ $("makeBtn").onclick = async () => {
   const s = selected(); if (!s.length) return;
   const total = money(s.reduce((a,b)=>a+b.amt,0));
   if (!(await confirmBox(`Make a claim form for ${curWorker}?\n${s.length} receipts · RM ${total}`))) return;
-  const b=$("makeBtn"); b.disabled=true; b.replaceChildren(el("span",{class:"spin"})," Making… about 30 s");
+  const b=$("makeBtn"); b.disabled=true;
+  if (saving.size){   // wait for edits that are still saving, so the claim uses the new numbers
+    b.replaceChildren(el("span",{class:"spin"})," Saving edits…");
+    const ok = await Promise.all([...saving]);
+    if (ok.includes(false)){ b.textContent="Make claim form"; sum(); return toast("An edit did not save. Check the receipts, then try again."); }
+  }
+  b.replaceChildren(el("span",{class:"spin"})," Making… about 30 s");
   try{ const r = await api("office_claim", {worker: curWorker, ids: s.map(x=>x.id)}); haptic("success");
     toast(r.no+" made · RM "+money(r.total)); off=new Set(); await load("claims"); }
   catch(e){ toast("Could not make the claim: "+errText(e)); }
@@ -392,10 +398,18 @@ $("rSave").onclick = async () => {
   const bad = m => { $("rErr").textContent=m; $("rErr").hidden=false; };
   if (!(Number(item.amt)>0)) return bad("Total must be more than 0.");
   if (!item.date) return bad("Please pick the date.");
-  $("rSave").disabled=true; $("rSave").replaceChildren(el("span",{class:"spin"})," Saving…");
-  try{ const j = await api("office_receipt",{id:curRec.id, item}); haptic("success"); toast(j.changed?"Saved · Telegram caption updated too":"Nothing changed"); closeReceipt(); await load("receipts"); }
-  catch(e){ bad(errText(e)); $("rSave").disabled=false; $("rSave").textContent="Save changes"; }
+  // show the change at once; the server (sheet + Telegram caption) finishes in the background
+  const r = curRec, before = Object.assign({}, r);
+  Object.assign(r, { cat:item.cat, date:item.date, amt:Math.round(Number(item.amt)*100)/100, desc:item.desc.trim().toUpperCase(),
+    bill:item.bill.trim()||NOBILL, plate:item.cat==="PETROL"?item.plate.trim().toUpperCase():"", loc:item.loc.trim() });
+  closeReceipt(); renderReceipts(); haptic("success"); toast("Saved");
+  const job = api("office_receipt",{id:r.id, item})
+    .then(j=>{ if (j.changed && saving.size<=1) load(); return true; })   // refresh quietly, unless another edit is still saving
+    .catch(e=>{ Object.assign(r, before); renderReceipts(); toast("Could not save "+(r.desc||"receipt")+": "+errText(e)); return false; })
+    .finally(()=>saving.delete(job));
+  saving.add(job);
 };
+const saving = new Set();   // receipt edits still going to the server
 
 /* ---------- claims ---------- */
 function renderClaims(){
