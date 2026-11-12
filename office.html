@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>CT ART Claim · Office</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -101,7 +101,8 @@ body.locked > main{overflow:hidden}
 .imgbox img{max-width:100%;max-height:45vh;object-fit:contain;display:block;cursor:zoom-in}
 .imgbox.big img{max-height:none;cursor:zoom-out}
 /* two-finger zoom stays inside the box; one finger moves the picture while zoomed */
-.imgbox{overflow:hidden;position:relative;-webkit-user-select:none;user-select:none}
+.imgbox{overflow:hidden;position:relative;-webkit-user-select:none;user-select:none;touch-action:pan-y}
+.imgbox.zoomed{touch-action:none}
 .imgbox img{transform-origin:center;will-change:transform;-webkit-touch-callout:none}
 .zoomhint{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;padding:3px 8px;border-radius:999px;pointer-events:none}
 .info{font-size:13px;color:var(--muted)}
@@ -228,6 +229,10 @@ async function load(keepTab, quick){
   cachePut("ctclaim.scanWorkers", D.workers.filter(w=>w.status==="ACTIVE"&&w.name).map(w=>({id:w.id,name:w.name,code:w.code})).sort((a,b)=>a.name.localeCompare(b.name)));
   paint(cached ? null : keepTab);
 }
+// iPhone: a list that appears or grows after the page opened may not scroll until something is tapped;
+// switching its scrolling off and on again makes it scroll at once
+function kickScroll(m){ if(!m) return; requestAnimationFrame(()=>{ m.style.overflowY="hidden"; void m.offsetHeight; m.style.overflowY=""; }); }
+document.addEventListener("gesturestart", e=>e.preventDefault());   // iPhone: two fingers never zoom the whole app
 function paint(keepTab){
   $("hSub").textContent = D.me;
   $("vGate").hidden = true; $("tabs").hidden = false;
@@ -241,6 +246,7 @@ function show(t){
   document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-selected", b.dataset.tab===t));
   $("vWorkers").hidden = t!=="workers"; $("vReceipts").hidden = t!=="receipts"; $("vClaims").hidden = t!=="claims";
   $("barReceipts").hidden = t!=="receipts";
+  kickScroll($({workers:"vWorkers",receipts:"vReceipts",claims:"vClaims"}[t]));
 }
 document.querySelectorAll(".tab[data-tab]").forEach(b=>b.onclick=()=>show(b.dataset.tab));
 // scan receipts for a worker: the worker app in office mode (keeps the Telegram sign-in in the URL hash)
@@ -282,7 +288,7 @@ function openWorker(w, approving){
   $("wLinkBox").hidden = !(w.status==="PENDING" && !w.manual && pre.length);
   $("wLinkSel").replaceChildren(el("option",{value:"",text:"— No, this is a new worker —"}), ...pre.map(x=>el("option",{value:x.id,text:x.name+(x.code?" ("+x.code+")":"")})));
   $("wErr").hidden = true; $("wSave").disabled = false; $("wSave").textContent = isNew ? "Add worker" : w.status==="PENDING" ? "Approve" : "Save";
-  $("wSheet").hidden = false; lockPage(true); setTimeout(()=>$(w.name ? "wCode" : "wName").focus(), 50);
+  $("wSheet").hidden = false; lockPage(true); kickScroll($("wSheet").querySelector("main")); setTimeout(()=>$(w.name ? "wCode" : "wName").focus(), 50);
 }
 $("wLinkBtn").onclick = async () => {
   const mid = $("wLinkSel").value; const bad = m => { $("wErr").textContent=m; $("wErr").hidden=false; };
@@ -396,7 +402,9 @@ function openReceipt(r){
   const plateBox = $("rPlate").parentElement; const syncPlate=()=>plateBox.hidden = catSel.value!=="PETROL"; catSel.onchange=syncPlate; syncPlate();
   $("rImg").replaceChildren(el("span",{class:"spin"}));
   $("rSheet").hidden = false; $("rImg").classList.remove("big"); zoomReset(); lockPage(true); $("rSheet").querySelector("main").scrollTop = 0;
-  api("office_image",{id:r.id}).then(j=>{ if(curRec===r) $("rImg").replaceChildren(el("img",{src:`data:${j.mime};base64,${j.b64}`,alt:"Receipt"})); })
+  kickScroll($("rSheet").querySelector("main"));
+  api("office_image",{id:r.id}).then(j=>{ if(curRec!==r) return; const im=el("img",{src:`data:${j.mime};base64,${j.b64}`,alt:"Receipt"});
+    im.onload=()=>kickScroll($("rSheet").querySelector("main")); $("rImg").replaceChildren(im); })
     .catch(e=>{ if(curRec===r) $("rImg").replaceChildren(el("span",{class:"info",text:"Could not load the picture ("+errText(e)+")"})); });
 }
 function closeReceipt(){ $("rSheet").hidden = true; curRec = null; lockPage(false); }
@@ -405,7 +413,7 @@ function lockPage(on){ document.body.classList.toggle("locked", on || !$("wSheet
 // receipt picture: tap = bigger / back; pinch = zoom inside the box; drag = move while zoomed
 let zs=1, zx=0, zy=0, zStart=null, zMoved=false;
 function zImg(){ return $("rImg").querySelector("img"); }
-function zApply(){ const i=zImg(); if(!i) return; i.style.transform = zs>1 ? `translate(${zx}px,${zy}px) scale(${zs})` : "";
+function zApply(){ $("rImg").classList.toggle("zoomed", zs>1); const i=zImg(); if(!i) return; i.style.transform = zs>1 ? `translate(${zx}px,${zy}px) scale(${zs})` : "";
   let h=$("rImg").querySelector(".zoomhint"); if (zs>1){ if(!h){ h=el("span",{class:"zoomhint"}); $("rImg").append(h); } h.textContent=zs.toFixed(1)+"× · tap to reset"; } else if (h) h.remove(); }
 function zClamp(){ const i=zImg(), b=$("rImg"); if(!i) return;
   zs=Math.min(6,Math.max(1,zs)); if (zs<1.02){ zs=1; zx=0; zy=0; return; }
@@ -434,7 +442,7 @@ function zoomReset(){ zs=1; zx=0; zy=0; zStart=null; zApply(); }
   box.addEventListener("click", ()=>{
     if (zMoved){ zMoved=false; return; }                 // that was a pinch or drag, not a tap
     if (zs>1) return zoomReset();                        // zoomed: tap goes back to normal
-    box.classList.toggle("big");
+    box.classList.toggle("big"); kickScroll($("rSheet").querySelector("main"));
   });
 })();
 $("rBack").onclick = $("rCancel").onclick = closeReceipt;
