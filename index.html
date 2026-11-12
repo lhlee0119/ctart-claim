@@ -61,6 +61,8 @@ h2.sec{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--
 .item .t{min-width:0}
 .item .n{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .item .m{font-size:13px;color:var(--muted)}
+.item.tap{cursor:pointer}
+.item .m.edit{font-size:12px;color:var(--accent)}
 .item .e{font-size:13px;color:var(--bad);margin-top:2px}
 .item .amt{font-weight:500;text-align:right;white-space:nowrap}
 .x{border:0;background:none;color:var(--muted);font-size:13px;cursor:pointer;padding:4px 0 0;text-decoration:underline}
@@ -269,10 +271,11 @@ function renderHome(){
   } else {
     items.forEach((it,i)=>{
       const right = el("div",{style:"text-align:right"}, el("div",{class:"amt mono",text:"RM "+money(it.amt)}),
-        el("button",{class:"x",text:"Remove",onclick:()=>{ items.splice(i,1); renderHome(); }}));
-      const t = el("div",{class:"t"}, el("div",{class:"n",text:it.desc||"(no name)"}), el("div",{class:"m",text:[fmtDate(it.date),it.cat,it.plate,it.loc].filter(Boolean).join(" · ")}));
+        el("button",{class:"x",text:"Remove",onclick:ev=>{ ev.stopPropagation(); items.splice(i,1); renderHome(); }}));
+      const t = el("div",{class:"t"}, el("div",{class:"n",text:it.desc||"(no name)"}), el("div",{class:"m",text:[fmtDate(it.date),it.cat,it.plate,it.loc].filter(Boolean).join(" · ")}),
+        el("div",{class:"m edit",text:"Tap to edit · Tekan untuk ubah"}));
       if (it.err) t.append(el("div",{class:"e",text:it.err}));
-      L.append(el("div",{class:"item"}, el("img",{src:it.thumb,alt:""}), t, right));
+      L.append(el("div",{class:"item tap",role:"button",tabindex:"0",onclick:()=>editItem(i)}, el("img",{src:it.thumb,alt:""}), t, right));
     });
     L.append(el("div",{class:"tot"}, el("span",{text:"Total · Jumlah"}), el("span",{class:"mono",text:"RM "+money(items.reduce((a,b)=>a+(+b.amt||0),0))})));
   }
@@ -634,7 +637,7 @@ function scaled(c,max){ const k=Math.min(1,max/Math.max(c.width,c.height)); if(k
 const b64 = (c,q) => c.toDataURL("image/jpeg",q).split(",")[1];
 
 $("cropBtn").onclick = async () => { $("cropBtn").disabled=true; await new Promise(r=>setTimeout(r,20));
-  try{ cur.color=warp(cur.src,cur.corners); cur.scan=enhance(cur.color); cur.rot=0; cur.mode="scan"; openReview(true); } finally { $("cropBtn").disabled=false; } };
+  try{ cur.color=warp(cur.src,cur.corners); cur.scan=enhance(cur.color); cur.rot=0; cur.mode="scan"; openReview(cur.editIndex==null); } finally { $("cropBtn").disabled=false; } };
 const outCanvas = () => rotate(cur.mode==="scan"?cur.scan:cur.color, cur.rot);
 const refreshImg = () => { $("revImg").src = outCanvas().toDataURL("image/jpeg",0.85); };
 $("rotBtn").onclick = () => { cur.rot=(cur.rot+1)%4; refreshImg(); };
@@ -666,19 +669,28 @@ function readFields(){ const c=catOf($("fCat").value); return {
   loc:$("fLoc").value.trim(), plate:c.car?$("fPlate").value.trim().toUpperCase():"" }; }
 function checkNotes(){
   const msgs=[]; const bill=norm($("fBill").value);
-  if(bill && (items.some(it=>norm(it.bill)===bill) || ((me&&me.bills)||[]).includes(bill)))
+  const others = items.filter((it,j)=>!(cur && j===cur.editIndex));   // when editing, don't compare with itself
+  if(bill && (others.some(it=>norm(it.bill)===bill) || ((me&&me.bills)||[]).includes(bill)))
     msgs.push("This bill number was already sent. No. bil ini sudah dihantar.");
   if($("fCat").value==="MEDICAL"){
     const ym=($("fDate").value||"").slice(0,7);
-    const used=[...items, ...((me&&me.medical)||[]).map(m=>({cat:"MEDICAL",date:m.date,amt:m.amt}))]
+    const used=[...others, ...((me&&me.medical)||[]).map(m=>({cat:"MEDICAL",date:m.date,amt:m.amt}))]
       .filter(it=>it.cat==="MEDICAL"&&(it.date||"").slice(0,7)===ym).reduce((a,b)=>a+(+b.amt||0),0);
     const tot=used+(parseFloat($("fAmt").value)||0);
     if(tot>100) msgs.push(`Medical this month: RM${money(tot)}. Cap is RM100, the extra RM${money(tot-100)} will not be paid. Had RM100 sebulan.`);
   }
   $("noteBox").hidden=!msgs.length; $("noteBox").textContent=msgs.join(" ");
 }
+// open a receipt that is waiting to be sent again: same photo, same details, no new auto-read
+function editItem(i){
+  const it=items[i]; if(!it || !it.cur) return;
+  cur=it.cur; cur.editIndex=i;
+  openReview(false); $("discardBtn").querySelector(".lab").firstChild.nodeValue="Cancel"; $("discardBtn").querySelector("small").textContent="Batal"; writeFields(it); $("ePlate").hidden=true; $("wPlate").classList.remove("need"); checkNotes();
+  const box=$("aiBox"); box.hidden=false; box.className="ai"; box.textContent="Editing a saved receipt. Change what is wrong, then Save. Ubah dan simpan.";
+}
 function openReview(fresh){
   show("Review"); refreshImg();
+  if (cur && cur.editIndex==null){ $("discardBtn").querySelector(".lab").firstChild.nodeValue="Discard"; $("discardBtn").querySelector("small").textContent="Buang"; }
   if(fresh){ writeFields({cat:"PURCHASES",plate:store.get("ctclaim.plate")||""}); $("ePlate").hidden=true; $("wPlate").classList.remove("need"); checkNotes(); readWithAI(); }
 }
 
@@ -713,7 +725,9 @@ async function readWithAI(){
   }
 }
 
-$("discardBtn").onclick = () => { cur=null; if(!nextInQueue()) show("Home"); };
+$("discardBtn").onclick = () => {
+  if (cur && cur.editIndex!=null){ delete cur.editIndex; cur=null; show("Home"); return; }   // editing: keep the receipt as it was
+  cur=null; if(!nextInQueue()) show("Home"); };
 $("saveBtn").onclick = () => {
   const c=catOf($("fCat").value);
   const needPlate=c.car && !$("fPlate").value.trim();
@@ -723,8 +737,10 @@ $("saveBtn").onclick = () => {
   const r=readFields(); if(r.plate) store.set("ctclaim.plate",r.plate);
   const full=outCanvas();
   r.thumb=scaled(full,160).toDataURL("image/jpeg",0.7);
-  r.image=b64(full,0.82); r.ai=cur.ai;
-  items.push(r); haptic("success"); cur=null; renderHome(); if(!nextInQueue()) show("Home");
+  r.image=b64(full,0.82); r.ai=cur.ai; r.cur=cur;
+  const editing = cur.editIndex!=null && items[cur.editIndex];
+  if (editing){ items[cur.editIndex]=r; delete cur.editIndex; } else items.push(r);
+  haptic("success"); cur=null; renderHome(); if(editing || !nextInQueue()) show("Home");
 };
 
 /* ---------- send ---------- */
