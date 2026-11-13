@@ -391,7 +391,15 @@ function openReceipt(r){
   const inp = (id, label, value, attrs={}, full) => el("div",{class:"f"+(full?" full":"")}, el("label",{for:id,text:label}), el("input",Object.assign({id, value: value??""},attrs)));
   const catSel = el("select",{id:"rCat"}, ...Object.entries(CAT_NAMES).map(([k,v])=>el("option",{value:k,text:v})));
   catSel.value = r.cat;
+  // whose receipt this is: change it when the office scanned it under the wrong worker
+  const who = el("select",{id:"rWho"}, ...D.workers.filter(w=>w.status==="ACTIVE"&&w.name).sort((a,b)=>a.name.localeCompare(b.name))
+    .map(w=>el("option",{value:w.id,text:w.name+(w.code?" ("+w.code+")":"")})));
+  const mine = D.workers.find(w=>w.name===curWorker); if (mine) who.value = mine.id;
+  const whoHint = el("div",{class:"info",id:"rWhoHint",hidden:true});
+  who.onchange = () => { const moved = mine && who.value!==mine.id; whoHint.hidden=!moved;
+    whoHint.textContent = moved ? "Will move to "+who.selectedOptions[0].text+" when you save." : ""; };
   F.append(
+    el("div",{class:"f full"}, el("label",{for:"rWho",text:"Worker (whose receipt)"}), who, whoHint),
     el("div",{class:"f full"}, el("label",{for:"rCat",text:"Type"}), catSel),
     inp("rDate","Date", r.date, {type:"date"}),
     inp("rAmt","Total (RM)", money(r.amt), {inputmode:"decimal", class:"mono"}),
@@ -452,14 +460,22 @@ $("rSave").onclick = async () => {
   const bad = m => { $("rErr").textContent=m; $("rErr").hidden=false; };
   if (!(Number(item.amt)>0)) return bad("Total must be more than 0.");
   if (!item.date) return bad("Please pick the date.");
+  const fromName = curWorker, toW = D.workers.find(w=>w.id===$("rWho").value);
+  const move = toW && toW.name!==fromName;
+  if (move && !(await confirmBox("Move this receipt (RM "+money(item.amt)+") from "+fromName+" to "+toW.name+"?"))) return;
   // show the change at once; the server (sheet + Telegram caption) finishes in the background
   const r = curRec, before = Object.assign({}, r);
   Object.assign(r, { cat:item.cat, date:item.date, amt:Math.round(Number(item.amt)*100)/100, desc:item.desc.trim().toUpperCase(),
     bill:item.bill.trim()||NOBILL, plate:item.cat==="PETROL"?item.plate.trim().toUpperCase():"", loc:item.loc.trim() });
-  closeReceipt(); renderReceipts(); haptic("success"); toast("Saved");
-  const job = api("office_receipt",{id:r.id, item})
-    .then(j=>{ if (j.changed && saving.size<=1) load(); return true; })   // refresh quietly, unless another edit is still saving
-    .catch(e=>{ Object.assign(r, before); renderReceipts(); toast("Could not save "+(r.desc||"receipt")+": "+errText(e)); return false; })
+  if (move){   // take it out of this worker's list and put it in the other one's
+    D.pending[fromName] = (D.pending[fromName]||[]).filter(x=>x!==r); if (!D.pending[fromName].length) delete D.pending[fromName];
+    (D.pending[toW.name] = D.pending[toW.name]||[]).push(r); D.pending[toW.name].sort((a,b)=>a.date.localeCompare(b.date));
+  }
+  closeReceipt(); if (move) paint(); else renderReceipts(); haptic("success"); toast(move ? "Moved to "+toW.name : "Saved");
+  const job = (move ? api("office_move",{id:r.id, toId:toW.id}) : Promise.resolve())
+    .then(()=>api("office_receipt",{id:r.id, item}))
+    .then(j=>{ if ((move || j.changed) && saving.size<=1) load(); return true; })   // refresh quietly, unless another edit is still saving
+    .catch(e=>{ Object.assign(r, before); toast("Could not save "+(r.desc||"receipt")+": "+errText(e)); load(); return false; })
     .finally(()=>saving.delete(job));
   saving.add(job);
 };
