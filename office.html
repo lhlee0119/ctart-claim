@@ -503,7 +503,7 @@ function renderClaims(){
         catch(e){ toast(errText(e)); } finally{ send.disabled=false; send.textContent="📩 Send files to my Telegram"; } };
       const undo = el("button",{class:"lnk bad",type:"button",text:"Undo"});
       undo.onclick = async () => {
-        if (!(await confirmBox(`Undo ${c.no}?\n\n⚠️ Has this claim already been given to the accountant or paid? If yes, do NOT undo it: fix the mistake in next month's claim instead.\n\nUndo puts its ${c.n} receipts back in the "not claimed" list. The old files stay in Drive.`))) return;
+        if (!(await confirmBox(`Undo ${c.no}?\n\n⚠️ Has this claim already been given to the accountant or paid? If yes, do NOT undo it: fix the mistake in next month's claim instead.\n\nUndo puts its ${c.n} receipts back in the "not claimed" list. The old files move to a "Cancelled" folder in Drive.\n\nIf it was printed, take the paper back or write VOID on it: the next claim can get the same number ${c.no.replace(/ \S+$/,"")}.`))) return;
         undo.disabled=true; undo.textContent="Undoing…";
         try{ await api("office_undo",{no:c.no}); haptic("success"); toast(c.no+" cancelled"); await load("claims"); }
         catch(e){ toast(errText(e)); undo.disabled=false; undo.textContent="Undo"; } };
