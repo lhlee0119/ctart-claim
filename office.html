@@ -484,6 +484,11 @@ const saving = new Set();   // receipt edits still going to the server
 /* ---------- claims ---------- */
 function renderClaims(){
   const V = $("vClaims"); V.replaceChildren();
+  // live count per half month (cancelled claims not counted), for the accountant
+  (D.periods||[]).forEach((p,i)=>V.append(el("div",{class:"card",style:"padding:10px 14px"+(i?";opacity:.75":"")},
+    el("div",{style:"display:flex;justify-content:space-between;gap:8px;align-items:baseline"},
+      el("b",{text:(i?"Last period · ":"This period · ")+p.label}), el("span",{class:"mono",text:"RM "+money(p.total)})),
+    el("div",{class:"info",text:p.n+" claim form"+(p.n===1?"":"s")+" (cancelled ones not counted)"}))));
   if (!D.claims.length) { V.append(el("div",{class:"empty",text:"No claim forms yet."})); return; }
   D.claims.forEach(c=>{
     const cancelled = c.status==="CANCELLED";
