@@ -668,9 +668,10 @@ function readFields(){ const c=catOf($("fCat").value); return {
   bill:$("fBill").value.trim()||NOBILL, amt:Math.round((parseFloat($("fAmt").value)||0)*100)/100,
   loc:$("fLoc").value.trim(), plate:c.car?$("fPlate").value.trim().toUpperCase():"" }; }
 function checkNotes(){
-  const msgs=[]; const bill=norm($("fBill").value);
+  const z=s=>norm(s).replace(/^0+(?=.)/,"");   // 026352 = 26352
+  const msgs=[]; const bill=z($("fBill").value);
   const others = items.filter((it,j)=>!(cur && j===cur.editIndex));   // when editing, don't compare with itself
-  if(bill && (others.some(it=>norm(it.bill)===bill) || ((me&&me.bills)||[]).includes(bill)))
+  if(bill && (others.some(it=>z(it.bill)===bill) || ((me&&me.bills)||[]).some(x=>z(x)===bill)))
     msgs.push("This bill number was already sent. No. bil ini sudah dihantar.");
   if($("fCat").value==="MEDICAL"){
     const ym=($("fDate").value||"").slice(0,7);
@@ -750,8 +751,17 @@ $("sendBtn").onclick = async () => {
   for (const it of items.slice()){
     $("sendSub").textContent=`Sending ${done+left.length+1}/${total}…`;
     try{
-      const res=await api("submit",{item:{cat:it.cat,date:it.date,desc:it.desc,bill:it.bill,amt:it.amt,loc:it.loc,plate:it.plate}, image:it.image, ai:it.ai});
+      const send = force => api("submit",{item:{cat:it.cat,date:it.date,desc:it.desc,bill:it.bill,amt:it.amt,loc:it.loc,plate:it.plate,force:!!force}, image:it.image, ai:it.ai});
+      let res=await send(false);
+      if(!res.ok && res.error==="maybe_duplicate"){
+        // no bill number, but same date + amount + shop was sent before: ask, it may really be a second purchase
+        const q=`${String(it.desc||"Receipt").slice(0,40)} RM${money(it.amt)} on ${it.date}: the same date, amount and shop was already sent${res.detail?" ("+res.detail+")":""}. Send anyway? Hantar juga?`;
+        const yes = await new Promise(r=>{ try{ tg.showConfirm(q, v=>r(!!v)); }catch(e){ r(window.confirm(q)); } });
+        if(yes) res=await send(true);
+        else res={ok:false,error:"skipped"};
+      }
       if(res.ok){ done++; amount+=it.amt; }
+      else if(res.error==="skipped"){ it.err="Looks like it was already sent. Not sent. Mungkin sudah dihantar."; left.push(it); }
       else { it.err = res.error==="duplicate" ? "Already sent before"+(res.detail?" ("+res.detail+")":"")+". Sudah dihantar." : "Not sent, try again. Belum dihantar."; left.push(it); }
     }catch(e){ it.err="No connection, try again. Tiada sambungan."; left.push(it); }
   }
