@@ -668,7 +668,7 @@ function readFields(){ const c=catOf($("fCat").value); return {
   bill:$("fBill").value.trim()||NOBILL, amt:Math.round((parseFloat($("fAmt").value)||0)*100)/100,
   loc:$("fLoc").value.trim(), plate:c.car?$("fPlate").value.trim().toUpperCase():"" }; }
 function checkNotes(){
-  const z=s=>norm(s).replace(/^0+(?=.)/,"");   // 026352 = 26352
+  const z=norm;   // leading zeros count: 026352 is not 26352
   const msgs=[]; const bill=z($("fBill").value);
   const others = items.filter((it,j)=>!(cur && j===cur.editIndex));   // when editing, don't compare with itself
   if(bill && (others.some(it=>z(it.bill)===bill) || ((me&&me.bills)||[]).some(x=>z(x)===bill)))
